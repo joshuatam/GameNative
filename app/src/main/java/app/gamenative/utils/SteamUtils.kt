@@ -527,6 +527,7 @@ object SteamUtils {
             }
         } else {
             if (!cfgFile.exists()){
+                cfgFile.parentFile?.mkdirs()
                 Files.createFile(cfgFile.toPath())
                 cfgFile.writeText("BootStrapperInhibitAll=Enable\nBootStrapperForceSelfUpdate=False")
             }

@@ -2611,24 +2611,28 @@ class SteamService : Service(), IChallengeUrlChanged {
                             }
                         }
 
-                        // TODO: This could be an issue. (Stalling)
-                        steamApps.picsGetAccessTokens(
-                            appIds = queue,
-                            packageIds = emptyList(),
-                        ).await()
-                            .appTokens
-                            .forEach { (key, value) ->
-                                appTokens[key] = value
-                            }
+                        try {
+                            // TODO: This could be an issue. (Stalling)
+                            steamApps.picsGetAccessTokens(
+                                appIds = queue,
+                                packageIds = emptyList(),
+                            ).await()
+                                .appTokens
+                                .forEach { (key, value) ->
+                                    appTokens[key] = value
+                                }
 
-                        // Get PICS information with the app ids.
-                        queue
-                            .map { PICSRequest(id = it, accessToken = appTokens[it] ?: 0L) }
-                            .chunked(MAX_PICS_BUFFER)
-                            .forEach { chunk ->
-                                Timber.d("bufferedPICSGetProductInfo: Queueing ${chunk.size} for PICS")
-                                appPicsChannel.send(chunk)
-                            }
+                            // Get PICS information with the app ids.
+                            queue
+                                .map { PICSRequest(id = it, accessToken = appTokens[it] ?: 0L) }
+                                .chunked(MAX_PICS_BUFFER)
+                                .forEach { chunk ->
+                                    Timber.d("bufferedPICSGetProductInfo: Queueing ${chunk.size} for PICS")
+                                    appPicsChannel.send(chunk)
+                                }
+                        } catch (e: AsyncJobFailedException) {
+                            Timber.w("Could not get PICS product info $e")
+                        }
                     }
                 }
         }
