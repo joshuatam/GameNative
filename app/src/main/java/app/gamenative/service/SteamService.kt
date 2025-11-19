@@ -1903,6 +1903,13 @@ class SteamService : Service(), IChallengeUrlChanged {
                 it.withCellID(PrefManager.cellId)
                 it.withServerListProvider(FileServerListProvider(File(serverListPath)))
                 it.withConnectionTimeout(60000L)
+                it.withHttpClient(
+                    OkHttpClient.Builder()
+                        .connectTimeout(10, TimeUnit.SECONDS)   // Time to establish connection
+                        .readTimeout(60, TimeUnit.SECONDS)      // Max inactivity between reads
+                        .writeTimeout(30, TimeUnit.SECONDS)     // Time for writes
+                        .build(),
+                )
             }
 
             // create our steam client instance
