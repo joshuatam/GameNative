@@ -2321,7 +2321,9 @@ private fun extractGraphicsDriverFiles(
         }
 
         var vulkanVersion = graphicsDriverConfig.get("vulkanVersion")
-        val vulkanVersionPatch: String? = GPUInformation.getVulkanVersion(adrenoToolsDriverId, context).split(".")[2]
+        val detectedVkVersion = GPUInformation.getVulkanVersion(adrenoToolsDriverId, context)
+        val vulkanVersionPatch = detectedVkVersion.split(".").getOrNull(2) ?: "0"
+
         vulkanVersion = vulkanVersion + "." + vulkanVersionPatch
         envVars.put("WRAPPER_VK_VERSION", vulkanVersion)
 
@@ -2358,7 +2360,6 @@ private fun extractGraphicsDriverFiles(
         val bcnEmulationCache = graphicsDriverConfig.get("bcnEmulationCache")
         envVars.put("WRAPPER_USE_BCN_CACHE", bcnEmulationCache)
 
-        envVars.put("MESA_VK_WSI_PRESENT_MODE", "mailbox")
         if (!vkbasaltConfig.isEmpty()) {
             envVars.put("ENABLE_VKBASALT", "1")
             envVars.put("VKBASALT_CONFIG", vkbasaltConfig)
