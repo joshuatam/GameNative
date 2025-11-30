@@ -226,7 +226,11 @@ internal fun LibraryListPane(
                             )
                         )
                         Text(
-                            text = "${state.totalAppsInFilter} games • $installedCount installed",
+                            text = androidx.compose.ui.res.stringResource(
+                                app.gamenative.R.string.library_game_count,
+                                state.totalAppsInFilter,
+                                installedCount
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

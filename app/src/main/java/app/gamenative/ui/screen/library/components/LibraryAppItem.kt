@@ -50,12 +50,14 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.gamenative.PrefManager
+import app.gamenative.R
 import app.gamenative.data.LibraryItem
 import app.gamenative.service.DownloadService
 import app.gamenative.service.SteamService
@@ -319,7 +321,7 @@ internal fun AppItem(
                                     if (isInstalled) {
                                         Icon(
                                             Icons.Filled.Check,
-                                            contentDescription = "Installed",
+                                            contentDescription = stringResource(R.string.library_installed),
                                             tint = Color.White,
                                             modifier = Modifier.size(16.dp)
                                         )
@@ -327,7 +329,7 @@ internal fun AppItem(
                                     if (appInfo.isShared) {
                                         Icon(
                                             Icons.Filled.Face4,
-                                            contentDescription = "Family Shared",
+                                            contentDescription = stringResource(R.string.library_family_shared),
                                             tint = MaterialTheme.colorScheme.tertiary,
                                             modifier = Modifier.size(16.dp)
                                         )
@@ -356,7 +358,7 @@ internal fun AppItem(
                     modifier = Modifier.height(40.dp)
                 ) {
                     Text(
-                        text = "Open",
+                        text = stringResource(R.string.library_open),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Bold
                         )
@@ -446,9 +448,9 @@ internal fun GameInfoBlock(
             // Status indicator
             val (statusText, statusColor) = if (isSteam) {
                 val text = when {
-                    isDownloading -> "Installing"
-                    isInstalledSteam -> "Installed"
-                    else -> "Not installed"
+                    isDownloading -> stringResource(R.string.library_installing)
+                    isInstalled -> stringResource(R.string.library_installed)
+                    else -> stringResource(R.string.library_not_installed)
                 }
                 val color = when {
                     isDownloading || isInstalledSteam -> MaterialTheme.colorScheme.tertiary
@@ -457,7 +459,7 @@ internal fun GameInfoBlock(
                 text to color
             } else {
                 // Custom Games are considered ready (no Steam install tracking)
-                "Ready" to MaterialTheme.colorScheme.tertiary
+                stringResource(R.string.library_status_ready) to MaterialTheme.colorScheme.tertiary
             }
 
             Row(
@@ -498,7 +500,7 @@ internal fun GameInfoBlock(
             // Family share indicator on its own line if needed
             if (appInfo.isShared) {
                 Text(
-                    text = "Family Shared",
+                    text = stringResource(R.string.library_family_shared),
                     style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
                     color = MaterialTheme.colorScheme.tertiary
                 )
