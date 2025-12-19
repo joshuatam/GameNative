@@ -44,7 +44,7 @@ interface SteamAppDao {
     @Query("SELECT * FROM steam_app WHERE id = :appId")
     suspend fun findApp(appId: Int): SteamApp?
 
-    @Query("SELECT * FROM steam_app AS app WHERE dlc_for_app_id = :appId AND " +
+    @Query("SELECT * FROM steam_app AS app WHERE dlc_for_app_id = :appId AND depots = '{}' AND " +
             " EXISTS (" +
             "   SELECT * FROM steam_license AS license " +
             "     WHERE license.license_type <> 0 AND " +

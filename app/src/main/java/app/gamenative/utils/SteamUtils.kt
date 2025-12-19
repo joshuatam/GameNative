@@ -767,7 +767,9 @@ object SteamUtils {
             appendLine("[app::dlcs]")
             appendLine("unlock_all=${if (forceDlc) 1 else 0}")
             dlcIds?.forEach { appendLine("$it=dlc$it") }
-            hiddenDlcApps?.forEach { appendLine("${it.id}=${it.name}") }
+
+            // only add hidden dlc apps if not found in dlcIds
+            hiddenDlcApps?.forEach { if (dlcIds?.contains(it.id) == false) appendLine("${it.id}=dlc${it.id}") }
 
             // Add cloud save config sections if appInfo exists
             if (appInfo != null) {
@@ -852,7 +854,7 @@ object SteamUtils {
                         .replace("{Steam3AccountID}", "{::Steam3AccountID::}")
                     uniqueDirs.add("{::$root::}/$path")
                 }
-                
+
                 uniqueDirs.forEachIndexed { index, dir ->
                     appendLine("dir${index + 1}=$dir")
                 }
