@@ -1043,12 +1043,51 @@ class SteamService : Service(), IChallengeUrlChanged {
                             return@launch
                         }
 
+                        // Some notes here:
+                        // Write should always be 1 in mobile device, as normally it does not use a SSD for storage
+                        // And to have maximum throughput, set downloadRatio = decompressRatio = 1.0 x CPU Cores
+                        var downloadRatio = 0.0
+                        var decompressRatio = 0.0
+
+                        when (PrefManager.downloadSpeed) {
+                            8 -> {
+                                downloadRatio = 0.3
+                                decompressRatio = 0.3
+                            }
+                            16 -> {
+                                downloadRatio = 0.5
+                                decompressRatio = 0.5
+                            }
+                            24 -> {
+                                downloadRatio = 0.8
+                                decompressRatio = 0.8
+                            }
+                            32 -> {
+                                downloadRatio = 1.0
+                                decompressRatio = 1.0
+                            }
+                        }
+
+                        val cpuCores = Runtime.getRuntime().availableProcessors()
+                        val maxDownloads = (cpuCores * downloadRatio).toInt().coerceAtLeast(1)
+                        val maxDecompress = (cpuCores * decompressRatio).toInt().coerceAtLeast(1)
+                        val maxFileWrites = 1
+
+                        Timber.i("CPU Cores: $cpuCores,")
+                        Timber.i("maxDownloads: $maxDownloads")
+                        Timber.i("maxDecompress: $maxDecompress")
+                        Timber.i("maxFileWrites: $maxFileWrites")
+
                         // Create DepotDownloader instance
                         val depotDownloader = DepotDownloader(
                             instance!!.steamClient!!,
                             licenses,
                             debug = false,
                             androidEmulation = true,
+                            maxDownloads = maxDownloads,
+                            maxDecompress = maxDecompress,
+                            maxFileWrites = maxFileWrites,
+                            parentJob = coroutineContext[Job]
                         )
 
                         // Create listener
