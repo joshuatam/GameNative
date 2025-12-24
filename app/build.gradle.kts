@@ -157,6 +157,9 @@ android {
             excludes += "/DebugProbesKt.bin"
             excludes += "/junit/runner/smalllogo.gif"
             excludes += "/junit/runner/logo.gif"
+
+            // Other excludes
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
         jniLibs {
             // 'extractNativeLibs' was not enough to keep the jniLibs and
