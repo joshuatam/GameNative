@@ -881,7 +881,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         fun downloadApp(appId: Int): DownloadInfo? {
             val currentDownloadInfo = downloadJobs[appId]
-            return downloadApp(appId, currentDownloadInfo?.dlcAppIds ?: emptyList())
+            return downloadApp(appId, currentDownloadInfo?.downloadingAppIds ?: emptyList())
         }
 
         fun downloadApp(appId: Int, dlcAppIds: List<Int>): DownloadInfo? {
@@ -892,7 +892,6 @@ class SteamService : Service(), IChallengeUrlChanged {
             }
             return getAppInfoOf(appId)?.let { appInfo ->
                 val depots = getDownloadableDepots(appId)
-                Timber.i("App contains ${depots.size} depot(s): ${depots.keys}")
                 downloadApp(appId, depots, dlcAppIds, "public")
             }
         }
@@ -1054,42 +1053,66 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         fun downloadApp(
             appId: Int,
-            depots: Map<Int, DepotInfo>,
+            downloadableDepots: Map<Int, DepotInfo>,
             dlcAppIds: List<Int>,
             branch: String,
         ): DownloadInfo? {
-            Timber.d("Attempting to download " + appId + " with depotIds " + depots.keys)
+            val appDirPath = getAppDirPath(appId)
+
             // Enforce Wi-Fi-only downloads
             if (PrefManager.downloadOnWifiOnly && instance?.isWifiConnected == false) {
                 instance?.notificationHelper?.notify("Not connected to Wi‑Fi/LAN")
                 return null
             }
             if (downloadJobs.contains(appId)) return getAppDownloadInfo(appId)
-            Timber.d("depots is empty? " + depots.isEmpty())
-            if (depots.isEmpty()) return null
+            Timber.d("depots is empty? " + downloadableDepots.isEmpty())
+            if (downloadableDepots.isEmpty()) return null
 
-            // Filter out DLC depots
-            val mainAppDepots = getMainAppDepots(appId).filter { (_, depot) ->
-                depot.dlcAppId == INVALID_APP_ID && // Main App
-                !dlcAppIds.contains(depot.dlcAppId)
+            val indirectDlcAppIds = getDownloadableDlcAppsOf(appId).orEmpty().map { it.id }
+
+            // Depots from Main game
+            val mainDepots = getMainAppDepots(appId)
+            var mainAppDepots = mainDepots.filter { (_, depot) ->
+                depot.dlcAppId == INVALID_APP_ID
+            } + mainDepots.filter { (_, depot) ->
+                dlcAppIds.contains(depot.dlcAppId) && !indirectDlcAppIds.contains(depot.dlcAppId)
             }
 
-            // Filter out main app depots
-            val dlcAppDepots = depots.filter { (_, depot) ->
-                dlcAppIds.contains(depot.dlcAppId)
+            // Depots from DLC App
+            val dlcAppDepots = downloadableDepots.filter { (_, depot) ->
+                !mainAppDepots.map { it.key }.contains(depot.depotId) &&
+                dlcAppIds.contains(depot.dlcAppId) && indirectDlcAppIds.contains(depot.dlcAppId)
+            }
+
+            if (MarkerUtils.hasMarker(appDirPath, Marker.MODIFYING_MARKER)) {
+                val appInfo = getInstalledApp(appId)
+                if (appInfo != null) {
+                    mainAppDepots = mainAppDepots.filter { it.key !in appInfo.downloadedDepots }
+                }
             }
 
             // Combine main app and DLC depots
             val selectedDepots = mainAppDepots + dlcAppDepots
+
+            val downloadingAppIds = dlcAppIds.toMutableList()
+            val dlcAppIds = dlcAppIds.toMutableList()
+            downloadingAppIds.add(appId)
+
+            if (dlcAppDepots.isEmpty()) {
+                dlcAppIds.clear()
+                downloadingAppIds.clear()
+                downloadingAppIds.add(appId)
+            }
 
             Timber.i("selectedDepots is empty? " + selectedDepots.isEmpty())
 
             if (selectedDepots.isEmpty()) return null
 
             Timber.i("Starting download for $appId")
+            Timber.i("App contains ${mainAppDepots.size} depot(s): ${mainAppDepots.keys}")
+            Timber.i("DLC contains ${dlcAppDepots.size} depot(s): ${dlcAppDepots.keys}")
 
-            val appDirPath = getAppDirPath(appId)
-            val info = DownloadInfo(selectedDepots.size, dlcAppIds).also { di ->
+            val info = DownloadInfo(appId, downloadingAppIds, selectedDepots.size).also { di ->
                 di.setPersistencePath(appDirPath)
                 // Set weights for each depot based on manifest sizes
                 val sizes = selectedDepots.map { (_, depot) ->
@@ -1172,7 +1195,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                         val mainAppDepotIdToIndex = mainAppDepotIds.mapIndexed { index, depotId -> depotId to index }.toMap()
 
                         // Create listener
-                        val mainAppListener = AppDownloadListener(di, mainAppDepotIdToIndex, appId, mainAppDepotIds, appDirPath)
+                        val mainAppListener = AppDownloadListener(di, mainAppDepotIdToIndex, appId, dlcAppIds,mainAppDepotIds, appDirPath)
                         depotDownloader.addListener(mainAppListener)
 
                         // Create AppItem with only mandatory appId
@@ -1194,7 +1217,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                             val dlcDepotIds = dlcDepots.keys.sorted()
                             val dlcAppDepotIdToIndex = dlcDepots.keys.sorted().mapIndexed { index, depotId -> depotId to index }.toMap()
 
-                            val dlcAppListener = AppDownloadListener(di, dlcAppDepotIdToIndex, dlcAppId, dlcDepotIds, appDirPath)
+                            val dlcAppListener = AppDownloadListener(di, dlcAppDepotIdToIndex, dlcAppId, emptyList(), dlcDepotIds, appDirPath)
                             depotDownloader.addListener(dlcAppListener)
                             dlcListeners.add(dlcAppListener)
 
@@ -1253,7 +1276,8 @@ class SteamService : Service(), IChallengeUrlChanged {
         private class AppDownloadListener(
             private val downloadInfo: DownloadInfo,
             private val depotIdToIndex: Map<Int, Int>,
-            private val appId: Int,
+            private val downloadingAppId: Int,
+            private val dlcAppIds: List<Int>,
             private val entitledDepotIds: List<Int>,
             private val appDirPath: String,
         ) : IDownloadListener {
@@ -1270,32 +1294,61 @@ class SteamService : Service(), IChallengeUrlChanged {
 
             override fun onDownloadCompleted(item: DownloadItem) {
                 Timber.i("Item ${item.appId} download completed")
-                // Handle completion: add marker, update database
-                val ownedDlc = runBlocking { getOwnedAppDlc(appId) }
-                MarkerUtils.addMarker(getAppDirPath(appId), Marker.DOWNLOAD_COMPLETE_MARKER)
-                PluviaApp.events.emit(AndroidEvent.LibraryInstallStatusChanged(appId))
+
+                val appDirPath = getAppDirPath(downloadInfo.gameId)
+
+                // Update database
                 runBlocking {
-                    instance?.appInfoDao?.insert(
-                        AppInfo(
-                            appId,
-                            isDownloaded = true,
-                            downloadedDepots = entitledDepotIds,
-                            dlcDepots = ownedDlc.values.map { it.dlcAppId }.distinct(),
-                        ),
-                    )
+                    // Update Main Game Saved AppInfo
+                    if (downloadInfo.gameId == item.appId &&
+                        MarkerUtils.hasMarker(appDirPath, Marker.MODIFYING_MARKER)) {
+                        val appInfo = getInstalledApp(downloadInfo.gameId)!!
+                        val updatedDownloadedDepots = (appInfo.downloadedDepots + entitledDepotIds).distinct()
+                        val updatedDlcDepots = (appInfo.dlcDepots + dlcAppIds).distinct()
+
+                        instance?.appInfoDao?.update(
+                            AppInfo(
+                                downloadingAppId,
+                                isDownloaded = true,
+                                downloadedDepots = updatedDownloadedDepots,
+                                dlcDepots = updatedDlcDepots,
+                            ),
+                        )
+                    } else {
+                        instance?.appInfoDao?.insert(
+                            AppInfo(
+                                downloadingAppId,
+                                isDownloaded = true,
+                                downloadedDepots = entitledDepotIds,
+                                dlcDepots = dlcAppIds,
+                            ),
+                        )
+                    }
                 }
-                MarkerUtils.removeMarker(getAppDirPath(appId), Marker.STEAM_DLL_REPLACED)
-                MarkerUtils.removeMarker(getAppDirPath(appId), Marker.STEAM_COLDCLIENT_USED)
 
-                // Clear persisted bytes file on successful completion
-                downloadInfo.clearPersistedBytesDownloaded(appDirPath)
+                // Remove completed appId from downloadInfo.dlcAppIds
+                downloadInfo.downloadingAppIds = downloadInfo.downloadingAppIds.filter { it != downloadingAppId }
 
-                removeDownloadJob(appId)
+                // All downloading appIds are removed
+                if (downloadInfo.downloadingAppIds.isEmpty()) {
+                    // Handle completion: add marker, update database
+                    MarkerUtils.addMarker(appDirPath, Marker.DOWNLOAD_COMPLETE_MARKER)
+                    PluviaApp.events.emit(AndroidEvent.LibraryInstallStatusChanged(downloadInfo.gameId))
+
+                    MarkerUtils.removeMarker(appDirPath, Marker.STEAM_DLL_REPLACED)
+                    MarkerUtils.removeMarker(appDirPath, Marker.STEAM_COLDCLIENT_USED)
+                    MarkerUtils.removeMarker(appDirPath, Marker.MODIFYING_MARKER)
+
+                    // Clear persisted bytes file on successful completion
+                    downloadInfo.clearPersistedBytesDownloaded(appDirPath)
+
+                    removeDownloadJob(downloadInfo.gameId)
+                }
             }
 
             override fun onDownloadFailed(item: DownloadItem, error: Throwable) {
                 Timber.e(error, "Item ${item.appId} failed to download")
-                removeDownloadJob(appId)
+                removeDownloadJob(downloadInfo.gameId)
                 instance?.let { service ->
                     service.scope.launch(Dispatchers.Main) {
                         Toast.makeText(

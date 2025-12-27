@@ -9,8 +9,9 @@ import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 
 data class DownloadInfo(
+    val gameId: Int,
+    var downloadingAppIds: List<Int>,
     val jobCount: Int = 1,
-    val dlcAppIds: List<Int>,
 ) {
     private var downloadJob: Job? = null
     private val downloadProgressListeners = mutableListOf<((Float) -> Unit)>()

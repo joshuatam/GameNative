@@ -1216,6 +1216,17 @@ class SteamAppScreen : BaseAppScreen() {
                 },
                 onInstall = { dlcAppIds ->
                     hideGameManagerDialog(gameId)
+
+                    val installedApp = SteamService.getInstalledApp(gameId)
+                    if (installedApp != null) {
+                        // Add modifying marker
+                        MarkerUtils.addMarker(getAppDirPath(gameId), Marker.MODIFYING_MARKER)
+                        // Remove markers if the app is already installed
+                        MarkerUtils.removeMarker(getAppDirPath(gameId), Marker.STEAM_DLL_REPLACED)
+                        MarkerUtils.removeMarker(getAppDirPath(gameId), Marker.STEAM_DLL_RESTORED)
+                        MarkerUtils.removeMarker(getAppDirPath(gameId), Marker.STEAM_COLDCLIENT_USED)
+                    }
+
                     PostHog.capture(
                         event = "game_install_started",
                         properties = mapOf("game_name" to (appInfo?.name ?: ""))

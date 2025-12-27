@@ -87,7 +87,11 @@ fun GameManagerDialog(
     val appInfo = SteamService.getAppInfoOf(gameId)!!
     val installedApp = SteamService.getInstalledApp(gameId)
     val installedDlcIds = installedApp?.dlcDepots.orEmpty()
-    val hiddenDlcIds = SteamService.getHiddenDlcAppsOf(gameId).orEmpty().map { it.id }
+
+    val indirectDlcAppIds = SteamService.getDownloadableDlcAppsOf(gameId).orEmpty().map { it.id }
+
+    // Filter out DLCs that are not in the appInfo, this can happen for DLCs that are not in the appInfo
+    val hiddenDlcIds = SteamService.getHiddenDlcAppsOf(gameId).orEmpty().map { it.id }.filter { id -> appInfo.depots[id] == null }
 
     LaunchedEffect(visible) {
         scrollState.animateScrollTo(0)
@@ -113,7 +117,8 @@ fun GameManagerDialog(
                 .toMap()
             .forEach { (_, depotInfo) ->
                 allDownloadableApps.add(Pair(depotInfo.dlcAppId, depotInfo))
-                selectedAppIds.put(depotInfo.dlcAppId, !BuildConfig.DEBUG) // Don't select DLCs in debug mode
+                selectedAppIds.put(depotInfo.dlcAppId,
+                    !indirectDlcAppIds.contains(depotInfo.dlcAppId) || installedDlcIds.contains(depotInfo.dlcAppId))
             }
 
     }
