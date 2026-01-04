@@ -212,6 +212,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         boolean shareAndroidClipboard = PrefManager.getBoolean("share_android_clipboard", false);
         boolean enablePebLogs = PrefManager.getBoolean("enable_peb_logs", false);
 
+        if (container.isLaunchRealSteam()) {
+            File libvfsFile = new File(context.getApplicationInfo().nativeLibraryDir, "libvfs.so");
+            envVars.put("WINEMU_ROOT_FS", rootDir.getAbsolutePath());
+            envVars.put("WINEMU_VFS", libvfsFile.getAbsolutePath());
+            envVars.put("GAMESCOPE_DRIVER_PATH", new File(imageFs.getLib64Dir(), "libvulkan_freedreno.so"));
+        }
 
         if (openWithAndroidBrowser)
             envVars.put("WINE_OPEN_WITH_ANDROID_BROWSER", "1");
@@ -274,8 +280,8 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         envVars.put("SSL_CERT_DIR", rootDir.getPath() + "/usr/etc/tls/certs");
         envVars.put("WINE_X11FORCEGLX", "1");
         envVars.put("WINE_GST_NO_GL", "1");
-        envVars.put("STEAMAGENT_LOG_DIR", "Z:\\\\steamagent");
-        envVars.put("STEAMAGENT_PORT", "6969");
+//        envVars.put("STEAMAGENT_LOG_DIR", "Z:\\\\steamagent");
+//        envVars.put("STEAMAGENT_PORT", "6969");
         String steamGameId = "0";
         GameSource gameSource = ContainerUtils.INSTANCE.extractGameSourceFromContainerId(container.id);
         if (gameSource == GameSource.STEAM) {

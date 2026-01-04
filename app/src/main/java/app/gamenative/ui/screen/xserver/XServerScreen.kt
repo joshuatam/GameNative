@@ -115,6 +115,7 @@ import com.winlator.xenvironment.components.GuestProgramLauncherComponent
 import com.winlator.xenvironment.components.NetworkInfoUpdateComponent
 import com.winlator.xenvironment.components.PulseAudioComponent
 import com.winlator.xenvironment.components.SteamClientComponent
+import com.winlator.xenvironment.components.SteamLauncherComponent
 import com.winlator.xenvironment.components.SysVSharedMemoryComponent
 import com.winlator.xenvironment.components.VirGLRendererComponent
 import com.winlator.xenvironment.components.VortekRendererComponent
@@ -1448,7 +1449,8 @@ private fun setupXEnvironment(
     val wineDebugChannels = PrefManager.wineDebugChannels
     // explicitly enable or disable Wine debug channels
     envVars.put(
-        "WINEDEBUG", "steam.exe:+loaddll,+file,+err,+exec,+process,+seh,+tid"
+        //"WINEDEBUG", "steam.exe:+loaddll,+file,+err,+exec,+process,+seh,+tid"
+        "WINEDEBUG", "-all"
 //        if (enableWineDebug && wineDebugChannels.isNotEmpty())
 //            "+" + wineDebugChannels.replace(",", ",+")
 //        else
@@ -1504,9 +1506,15 @@ private fun setupXEnvironment(
         val wow64Mode = container.isWoW64Mode
         guestProgramLauncherComponent.setContainer(container);
         guestProgramLauncherComponent.setWineInfo(xServerState.value.wineInfo);
-        val guestExecutable = "wine explorer /desktop=shell," + xServer.screenInfo + " " +
-            getWineStartCommand(appId, container, bootToContainer, appLaunchInfo, envVars, guestProgramLauncherComponent) +
-            (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "")
+        val guestExecutable = if (container.isLaunchRealSteam) {
+            "wine start /b " +
+                    getWineStartCommand(appId, container, bootToContainer, appLaunchInfo, envVars, guestProgramLauncherComponent) +
+                    (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "")
+        } else {
+            "wine explorer /desktop=shell," + xServer.screenInfo + " " +
+                    getWineStartCommand(appId, container, bootToContainer, appLaunchInfo, envVars, guestProgramLauncherComponent) +
+                    (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "")
+        }
         guestProgramLauncherComponent.isWoW64Mode = wow64Mode
         guestProgramLauncherComponent.guestExecutable = guestExecutable
         // Set steam type for selecting appropriate box64rc
@@ -1551,14 +1559,19 @@ private fun setupXEnvironment(
     )
     environment.addComponent(XServerComponent(xServer, UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH)))
     environment.addComponent(NetworkInfoUpdateComponent())
-    environment.addComponent(SteamClientComponent())
 
-    // environment.addComponent(SteamClientComponent(UnixSocketConfig.createSocket(
-    //     rootPath,
-    //     Paths.get(ImageFs.WINEPREFIX, "drive_c", UnixSocketConfig.STEAM_PIPE_PATH).toString()
-    // )))
-    // environment.addComponent(SteamClientComponent(UnixSocketConfig.createSocket(SteamService.getAppDirPath(appId), "/steam_pipe")))
-    // environment.addComponent(SteamClientComponent(UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.STEAM_PIPE_PATH)))
+    if (container.isLaunchRealSteam) {
+        environment.addComponent(SteamLauncherComponent())
+    } else {
+        environment.addComponent(SteamClientComponent())
+
+        // environment.addComponent(SteamClientComponent(UnixSocketConfig.createSocket(
+        //     rootPath,
+        //     Paths.get(ImageFs.WINEPREFIX, "drive_c", UnixSocketConfig.STEAM_PIPE_PATH).toString()
+        // )))
+        // environment.addComponent(SteamClientComponent(UnixSocketConfig.createSocket(SteamService.getAppDirPath(appId), "/steam_pipe")))
+        // environment.addComponent(SteamClientComponent(UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.STEAM_PIPE_PATH)))
+    }
 
     if (xServerState.value.audioDriver == "alsa") {
         envVars.put("ANDROID_ALSA_SERVER", imageFs.getRootDir().getPath() + UnixSocketConfig.ALSA_SERVER_PATH)
@@ -1733,7 +1746,7 @@ private fun getWineStartCommand(
         Timber.tag("XServerScreen").w("appLaunchInfo is null for Steam game: $appId")
         "\"wfm.exe\""
     } else {
-        if (container.isLaunchRealSteam()) {
+        if (container.isLaunchRealSteam) {
             // Get language from container
             val language = runCatching {
                 (container.getExtra("language", null)
@@ -1742,7 +1755,7 @@ private fun getWineStartCommand(
             }.getOrDefault("english").lowercase()
 
             // Launch Steam with authentication parameters
-            "\"C:\\\\Program Files (x86)\\\\Steam\\\\steam.exe\" --username ${PrefManager.username} --token ${PrefManager.refreshToken} --rememberme --language ${language} --applaunch ${steamAppId}"
+            "\"C:\\\\Program Files (x86)\\\\Steam\\\\steam.exe\" --username ${PrefManager.username} --token ${PrefManager.accessToken} --rememberme --language ${language} --applaunch ${steamAppId}"
         } else {
             var executablePath = ""
             if (container.executablePath.isNotEmpty()) {
@@ -1776,7 +1789,11 @@ private fun getWineStartCommand(
         }
     }
 
-    return "winhandler.exe $args"
+    if (container.isLaunchRealSteam) {
+        return args
+    } else {
+        return "winhandler.exe $args"
+    }
 }
 private fun getSteamlessTarget(
     appId: String,
