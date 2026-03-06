@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
@@ -801,15 +803,19 @@ class SteamAppScreen : BaseAppScreen() {
             Paths.get(SteamService.defaultAppInstallPath).pathString
         }
         val initialStoragePermissionGranted = remember {
-            val writePermissionGranted = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            ) == PackageManager.PERMISSION_GRANTED
-            val readPermissionGranted = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-            ) == PackageManager.PERMISSION_GRANTED
-            writePermissionGranted && readPermissionGranted
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                val writePermissionGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                ) == PackageManager.PERMISSION_GRANTED
+                val readPermissionGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                ) == PackageManager.PERMISSION_GRANTED
+                writePermissionGranted && readPermissionGranted
+            }
         }
         var hasStoragePermission by remember { mutableStateOf(initialStoragePermissionGranted) }
         var installSizeInfo by remember(gameId) { mutableStateOf<InstallSizeInfo?>(null) }
@@ -837,7 +843,23 @@ class SteamAppScreen : BaseAppScreen() {
             },
         )
 
-        // Permission launcher for storage permissions
+        // Launcher for MANAGE_EXTERNAL_STORAGE settings (API 30+)
+        val manageStorageLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult(),
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val granted = Environment.isExternalStorageManager()
+                hasStoragePermission = granted
+                if (!granted) {
+                    // Permissions denied
+                    SnackbarManager.show(context.getString(R.string.steam_storage_permission_required))
+                    hideInstallDialog(gameId)
+                    hideGameManagerDialog(gameId)
+                }
+            }
+        }
+
+        // Permission launcher for storage permissions (pre-API 30)
         val permissionLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
         ) { permissions ->
@@ -887,12 +909,19 @@ class SteamAppScreen : BaseAppScreen() {
             if (installDialogState.type != DialogType.INSTALL_APP_PENDING) return@LaunchedEffect
 
             if (!hasStoragePermission) {
-                permissionLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.READ_EXTERNAL_STORAGE,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    ),
-                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    manageStorageLauncher.launch(intent)
+                } else {
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.READ_EXTERNAL_STORAGE,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        ),
+                    )
+                }
             } else {
                 val info = installSizeInfo ?: return@LaunchedEffect
                 val state = if (info.availableBytes < info.installBytes) {
@@ -907,12 +936,19 @@ class SteamAppScreen : BaseAppScreen() {
         LaunchedEffect(gameManagerDialogState.visible, hasStoragePermission) {
             if (!gameManagerDialogState.visible) return@LaunchedEffect
             if (!hasStoragePermission) {
-                permissionLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.READ_EXTERNAL_STORAGE,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    ),
-                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    manageStorageLauncher.launch(intent)
+                } else {
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.READ_EXTERNAL_STORAGE,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        ),
+                    )
+                }
             }
         }
 

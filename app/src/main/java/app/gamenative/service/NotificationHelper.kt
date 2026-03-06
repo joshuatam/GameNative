@@ -20,7 +20,11 @@ class NotificationHelper @Inject constructor(@ApplicationContext private val con
     companion object {
         private const val CHANNEL_ID = "pluvia_foreground_service"
         private const val CHANNEL_NAME = "GameNative Foreground Service"
-        private const val NOTIFICATION_ID = 1
+
+        const val NOTIFICATION_ID_STEAM = 1
+        const val NOTIFICATION_ID_GOG = 2
+        const val NOTIFICATION_ID_EPIC = 3
+        const val NOTIFICATION_ID_AMAZON = 4
 
         const val ACTION_EXIT = "com.oxgames.pluvia.EXIT"
     }
@@ -45,13 +49,13 @@ class NotificationHelper @Inject constructor(@ApplicationContext private val con
         notificationManager.createNotificationChannel(channel)
     }
 
-    fun notify(content: String) {
+    fun notify(content: String, id: Int = NOTIFICATION_ID_STEAM) {
         val notification = createForegroundNotification(content)
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        notificationManager.notify(id, notification)
     }
 
-    fun cancel() {
-        notificationManager.cancel(NOTIFICATION_ID)
+    fun cancel(id: Int = NOTIFICATION_ID_STEAM) {
+        notificationManager.cancel(id)
     }
 
     fun createForegroundNotification(content: String): Notification {

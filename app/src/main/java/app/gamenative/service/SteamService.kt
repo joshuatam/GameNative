@@ -3,6 +3,7 @@ package app.gamenative.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -3065,9 +3066,15 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         val notification = notificationHelper.createForegroundNotification("Running...")
-        startForeground(1, notification)
+        startForeground(NotificationHelper.NOTIFICATION_ID_STEAM, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 
         return START_STICKY
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        super.onTimeout(startId, fgsType)
+        Timber.w("Foreground service timeout reached, restarting...")
+        stopSelf()
     }
 
     override fun onDestroy() {

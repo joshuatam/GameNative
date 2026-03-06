@@ -3,6 +3,7 @@ package app.gamenative.service.epic
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
 import app.gamenative.data.DownloadInfo
 import app.gamenative.data.EpicCredentials
@@ -512,7 +513,7 @@ class EpicService : Service() {
         val instance = getInstance()
         // Start as foreground service
         val notification = notificationHelper.createForegroundNotification("Connected")
-        startForeground(1, notification)
+        startForeground(NotificationHelper.NOTIFICATION_ID_EPIC, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 
         // Determine if we should sync based on the action
         val shouldSync = when (intent?.action) {
@@ -580,6 +581,12 @@ class EpicService : Service() {
         return START_STICKY
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        super.onTimeout(startId, fgsType)
+        Timber.tag("EPIC").w("Foreground service timeout reached, restarting...")
+        stopSelf()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         Timber.tag("Epic").i("[EpicService] Service destroyed")
@@ -591,7 +598,7 @@ class EpicService : Service() {
 
         scope.cancel() // Cancel any ongoing operations
         stopForeground(STOP_FOREGROUND_REMOVE)
-        notificationHelper.cancel()
+        notificationHelper.cancel(NotificationHelper.NOTIFICATION_ID_EPIC)
         instance = null
     }
 
