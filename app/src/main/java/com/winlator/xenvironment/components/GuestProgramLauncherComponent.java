@@ -385,4 +385,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     public String execShellCommand(String command, boolean includeStderr){
         return "";
     }
+
+    public String buildLibraryPath(ImageFs imageFs) {
+        File rootDir = imageFs.getRootDir();
+        return rootDir.getPath() + "/usr/lib" + ":" + imageFs.getWinePath() + "/lib" + ":" + "/system/lib64";
+    }
 }

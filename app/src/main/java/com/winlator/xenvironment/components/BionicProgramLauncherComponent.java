@@ -253,7 +253,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                 rootDir.getPath() + "/usr/bin");
         envVars.put("REDIRECT_EXEC__PROC_SELF_EXE", winePath + "/wine");
 
-        envVars.put("LD_LIBRARY_PATH", rootDir.getPath() + "/usr/lib" + ":" + "/system/lib64" + ":" + imageFs.getWinePath() + "/lib");
+        envVars.put("LD_LIBRARY_PATH", buildLibraryPath(imageFs));
         envVars.put("ANDROID_SYSVSHM_SERVER", rootDir.getPath() + UnixSocketConfig.SYSVSHM_SERVER_PATH);
         envVars.put("FONTCONFIG_PATH", rootDir.getPath() + "/usr/etc/fonts");
 
@@ -445,6 +445,14 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         envVars.put("BOX64_RCFILE", box64RCFile.getPath());
     }
 
+    public String buildLibraryPath(ImageFs imageFs) {
+        File rootDir = imageFs.getRootDir();
+        String wineLibPath = wineInfo.isArm64EC() ?
+                imageFs.getWinePath() + "/lib/wine/aarch64-unix" :
+                imageFs.getWinePath() + "/lib/wine/x86_64-unix";
+        return rootDir.getPath() + "/usr/lib" + ":" + wineLibPath + ":" + imageFs.getWinePath() + "/lib/wine" + ":" + "/system/lib64";
+    }
+
     public String execShellCommand(String command) {
         return execShellCommand(command, true);
     }
@@ -497,7 +505,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         // Execute the command and capture its output
         try {
-            finalCommand = "/system/bin/linker64 " + finalCommand;
+            finalCommand = ProcessHelper.getLinker64Path() + " " + finalCommand;
             Log.d("BionicProgramLauncherComponent", "Shell command is " + finalCommand);
             java.lang.Process process = Runtime.getRuntime().exec(finalCommand, envVars.toStringArray(), workingDir != null ? workingDir : imageFs.getRootDir());
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));

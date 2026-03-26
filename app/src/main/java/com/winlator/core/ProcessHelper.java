@@ -79,11 +79,22 @@ public abstract class ProcessHelper {
         }
     }
 
+    public static String getLinker64Path() {
+        // newer android use this path
+        File file = new File("/apex/com.android.runtime/bin/linker64");
+        if (file.exists()) {
+            return file.getAbsolutePath();
+        }
+
+        // fallback
+        return "/system/bin/linker64";
+    }
+
     public static int exec(String command, String[] envp, File workingDir, Callback<Integer> terminationCallback) {
         int pid = -1;
         java.lang.Process process = null;
         try {
-            command = "/system/bin/linker64 " + command;
+            command = getLinker64Path() + " " + command;
             Log.d("ProcessHelper", "Executing: " + Arrays.toString(splitCommand(command)) + ", " + Arrays.toString(envp) + ", " + workingDir);
             process = Runtime.getRuntime().exec(splitCommand(command), envp, workingDir);
 

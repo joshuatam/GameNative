@@ -190,7 +190,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
                 imageFs.getRootDir().getPath() + "/usr/local/bin");
         envVars.put("REDIRECT_EXEC__PROC_SELF_EXE", winePath + "/wine");
 
-        envVars.put("LD_LIBRARY_PATH", imageFs.getRootDir().getPath() + "/usr/lib" + ":" + imageFs.getWinePath() + "/lib");
+        envVars.put("LD_LIBRARY_PATH", buildLibraryPath(imageFs));
         envVars.put("BOX64_LD_LIBRARY_PATH", imageFs.getRootDir().getPath() + "/usr/lib/x86_64-linux-gnu");
         envVars.put("ANDROID_SYSVSHM_SERVER", imageFs.getRootDir().getPath() + UnixSocketConfig.SYSVSHM_SERVER_PATH);
         envVars.put("FONTCONFIG_PATH", imageFs.getRootDir().getPath() + "/usr/etc/fonts");
@@ -302,7 +302,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
                 imageFs.getRootDir().getPath() + "/usr/local/bin");
         envVars.put("REDIRECT_EXEC__PROC_SELF_EXE", winePath + "/wine");
 
-        envVars.put("LD_LIBRARY_PATH", imageFs.getRootDir().getPath() + "/usr/lib" + ":" + imageFs.getWinePath() + "/lib");
+        envVars.put("LD_LIBRARY_PATH", buildLibraryPath(imageFs));
         envVars.put("BOX64_LD_LIBRARY_PATH", imageFs.getRootDir().getPath() + "/usr/lib/x86_64-linux-gnu");
         envVars.put("ANDROID_SYSVSHM_SERVER", imageFs.getRootDir().getPath() + UnixSocketConfig.SYSVSHM_SERVER_PATH);
         envVars.put("FONTCONFIG_PATH", imageFs.getRootDir().getPath() + "/usr/etc/fonts");
@@ -334,7 +334,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
 
         // Execute the command and capture its output
         try {
-            finalCommand = "/system/bin/linker64 " + finalCommand;
+            finalCommand = ProcessHelper.getLinker64Path() + " " + finalCommand;
             Log.d("GlibcProgramLauncherComponent", "Shell command is " + finalCommand);
             java.lang.Process process = Runtime.getRuntime().exec(finalCommand, envVars.toStringArray(), workingDir != null ? workingDir : imageFs.getRootDir());
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));

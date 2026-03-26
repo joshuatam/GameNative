@@ -3795,6 +3795,7 @@ private fun applyGeneralPatches(
 
 private fun refreshComponentsFiles(context: Context) {
     TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, "pulseaudio-gamenative.tzst", File(context.filesDir, "pulseaudio"))
+    TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, "redirect.tzst", File(context.filesDir, "imagefs"))
 }
 
 private fun extractDXWrapperFiles(
