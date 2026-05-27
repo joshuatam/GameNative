@@ -108,9 +108,12 @@ import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.ExecutableSelectionUtils
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.ManifestComponentHelper
+import app.gamenative.utils.DXWrapperDownloader
+import app.gamenative.utils.GraphicsDriverDownloader
 import app.gamenative.utils.PreInstallSteps
 import app.gamenative.utils.SteamTokenLogin
 import app.gamenative.utils.SteamUtils
+import app.gamenative.utils.WinComponentDownloader
 import app.gamenative.utils.WineProcessSnapshotHelper
 import com.posthog.PostHog
 import com.winlator.alsaserver.ALSAClient
@@ -1963,29 +1966,35 @@ fun XServerScreen(
                             Timber.i("Doing things once")
                             val envVars = EnvVars()
 
-                            setupWineSystemFiles(
-                                context,
-                                firstTimeBoot,
-                                xServerView!!.getxServer().screenInfo,
-                                xServerState,
-                                container,
-                                containerManager,
-                                envVars,
-                                contentsManager,
-                                onExtractFileListener,
-                            )
+                            runBlocking {
+                                setupWineSystemFiles(
+                                    context,
+                                    firstTimeBoot,
+                                    xServerView!!.getxServer().screenInfo,
+                                    xServerState,
+                                    container,
+                                    containerManager,
+                                    envVars,
+                                    contentsManager,
+                                    onExtractFileListener,
+                                )
+                            }
                             extractArm64ecInputDLLs(context, container) // REQUIRED: Uses updated xinput1_3 main.c from x86_64 build, prevents crashes with 3+ players, avoids need for input shim dlls.
                             extractx86_64InputDlls(context, container)
-                            extractGraphicsDriverFiles(
-                                context,
-                                xServerState.value.graphicsDriver,
-                                xServerState.value.dxwrapper,
-                                xServerState.value.dxwrapperConfig!!,
-                                container,
-                                envVars,
-                                firstTimeBoot,
-                                vkbasaltConfig,
-                            )
+
+                            runBlocking {
+                                extractGraphicsDriverFiles(
+                                    context,
+                                    xServerState.value.graphicsDriver,
+                                    xServerState.value.dxwrapper,
+                                    xServerState.value.dxwrapperConfig!!,
+                                    container,
+                                    envVars,
+                                    firstTimeBoot,
+                                    vkbasaltConfig,
+                                )
+                            }
+
                             changeWineAudioDriver(xServerState.value.audioDriver, container, ImageFs.find(context))
                             setImagefsContainerVariant(context, container)
                             PluviaApp.xEnvironment = setupXEnvironment(
@@ -4263,7 +4272,7 @@ private fun extractx86_64InputDlls(context: Context, container: Container) {
     } else Log.d("XServerDisplayActivity", "Wine version is not proton-9.0-x86_64, skipping input dlls extraction")
 }
 
-private fun setupWineSystemFiles(
+private suspend fun setupWineSystemFiles(
     context: Context,
     firstTimeBoot: Boolean,
     screenInfo: ScreenInfo,
@@ -4358,10 +4367,25 @@ private fun setupWineSystemFiles(
     if (openalState != container.getExtra("openal_dlls") || firstTimeBoot) {
         if (needsOpenalDlls) {
             val windowsDir = File(imageFs.rootDir, ImageFs.WINEPREFIX + "/drive_c/windows")
-            TarCompressorUtils.extract(
-                TarCompressorUtils.Type.ZSTD, context.assets,
-                "wincomponents/openal.tzst", windowsDir, onExtractFileListener,
-            )
+
+            // Download or use cached/bundled openal component
+            val openalFile = WinComponentDownloader.ensureWinComponentAvailable(context, "openal") { progress ->
+                Timber.d("Downloading openal component: ${(progress * 100).toInt()}%")
+            }
+
+            if (openalFile == null) {
+                // Legacy variant: use bundled asset
+                TarCompressorUtils.extract(
+                    TarCompressorUtils.Type.ZSTD, context.assets,
+                    "wincomponents/openal.tzst", windowsDir, onExtractFileListener,
+                )
+            } else {
+                // Modern variant: use downloaded file
+                TarCompressorUtils.extract(
+                    TarCompressorUtils.Type.ZSTD, openalFile,
+                    windowsDir, onExtractFileListener,
+                )
+            }
         }
         container.putExtra("openal_dlls", openalState)
         containerDataChanged = true
@@ -4459,7 +4483,74 @@ private fun refreshComponentsFiles(context: Context) {
     )
 }
 
-private fun extractDXWrapperFiles(
+/**
+ * Helper function to extract a graphics driver component, downloading if needed (modern variant)
+ * or using bundled assets (legacy variant).
+ */
+private suspend fun extractGraphicsDriverComponent(
+    context: Context,
+    componentId: String,
+    rootDir: File,
+    onExtractFileListener: OnExtractFileListener? = null
+) {
+    val componentFile = GraphicsDriverDownloader.ensureGraphicsDriverAvailable(context, componentId) { progress ->
+        Timber.d("Downloading graphics driver $componentId: ${(progress * 100).toInt()}%")
+    }
+
+    if (componentFile == null) {
+        // Legacy variant: use bundled asset
+        Timber.d("Extracting graphics driver $componentId from bundled assets")
+        TarCompressorUtils.extract(
+            TarCompressorUtils.Type.ZSTD, context.assets,
+            "graphics_driver/$componentId.tzst", rootDir, onExtractFileListener,
+        )
+    } else {
+        // Modern variant: use downloaded file
+        Timber.d("Extracting graphics driver $componentId from downloaded file: ${componentFile.absolutePath}")
+        val extractType = if (componentFile.name.endsWith(".tar.xz")) {
+            TarCompressorUtils.Type.XZ
+        } else {
+            TarCompressorUtils.Type.ZSTD
+        }
+        TarCompressorUtils.extract(
+            extractType, componentFile,
+            rootDir, onExtractFileListener,
+        )
+    }
+}
+
+/**
+ * Helper function to extract a dxwrapper component, downloading if needed (modern variant)
+ * or using bundled assets (legacy variant).
+ */
+private suspend fun extractDXWrapperComponent(
+    context: Context,
+    componentId: String,
+    windowsDir: File,
+    onExtractFileListener: OnExtractFileListener?
+) {
+    val componentFile = DXWrapperDownloader.ensureDXWrapperAvailable(context, componentId) { progress ->
+        Timber.d("Downloading dxwrapper $componentId: ${(progress * 100).toInt()}%")
+    }
+
+    if (componentFile == null) {
+        // Legacy variant: use bundled asset
+        Timber.d("Extracting dxwrapper $componentId from bundled assets")
+        TarCompressorUtils.extract(
+            TarCompressorUtils.Type.ZSTD, context.assets,
+            "dxwrapper/$componentId.tzst", windowsDir, onExtractFileListener,
+        )
+    } else {
+        // Modern variant: use downloaded file
+        Timber.d("Extracting dxwrapper $componentId from downloaded file: ${componentFile.absolutePath}")
+        TarCompressorUtils.extract(
+            TarCompressorUtils.Type.ZSTD, componentFile,
+            windowsDir, onExtractFileListener,
+        )
+    }
+}
+
+private suspend fun extractDXWrapperFiles(
     context: Context,
     firstTimeBoot: Boolean,
     container: Container,
@@ -4519,24 +4610,15 @@ private fun extractDXWrapperFiles(
                 dxvkMinVersion
             }
             Timber.i("Extracting VKD3D DX version for dxwrapper: $dxvkVersionForVkd3d")
-            TarCompressorUtils.extract(
-                TarCompressorUtils.Type.ZSTD, context.assets,
-                "dxwrapper/dxvk-${dxvkVersionForVkd3d}.tzst", windowsDir, onExtractFileListener,
-            )
+            extractDXWrapperComponent(context, "dxvk-$dxvkVersionForVkd3d", windowsDir, onExtractFileListener)
+
             if (profile != null) {
                 Timber.d("Applying user-defined VKD3D content profile: " + dxwrapper)
                 contentsManager.applyContent(profile);
             } else {
                 // Determine VKD3D version from state config
                 Timber.i("Extracting VKD3D D3D12 DLLs version: $dxwrapper")
-
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD,
-                    context.assets,
-                    "dxwrapper/$dxwrapper.tzst",
-                    windowsDir,
-                    onExtractFileListener,
-                )
+                extractDXWrapperComponent(context, dxwrapper, windowsDir, onExtractFileListener)
             }
         }
         else -> {
@@ -4548,18 +4630,9 @@ private fun extractDXWrapperFiles(
                 Timber.d("Applying user-defined DXVK content profile: " + dxwrapper)
                 contentsManager.applyContent(profile);
             } else {
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD, context.assets,
-                    "dxwrapper/$dxwrapper.tzst", windowsDir, onExtractFileListener,
-                )
+                extractDXWrapperComponent(context, dxwrapper, windowsDir, onExtractFileListener)
             }
-            TarCompressorUtils.extract(
-                TarCompressorUtils.Type.ZSTD,
-                context.assets,
-                "dxwrapper/d8vk-${DefaultVersion.D8VK}.tzst",
-                windowsDir,
-                onExtractFileListener,
-            )
+            extractDXWrapperComponent(context, "d8vk-${DefaultVersion.D8VK}", windowsDir, onExtractFileListener)
         }
     }
 }
@@ -4643,7 +4716,7 @@ private fun restoreOriginalDllFiles(
         }
     }
 }
-private fun extractWinComponentFiles(
+private suspend fun extractWinComponentFiles(
     context: Context,
     firstTimeBoot: Boolean,
     imageFs: ImageFs,
@@ -4689,10 +4762,28 @@ private fun extractWinComponentFiles(
             if (!container.wineVersion.contains("arm64ec") && identifier.contains("opengl") && useNative) continue
 
             if (useNative) {
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD, context.assets,
-                    "wincomponents/$identifier.tzst", windowsDir, onExtractFileListener,
-                )
+                // Download or use cached/bundled wincomponent
+                val componentFile = WinComponentDownloader.ensureWinComponentAvailable(
+                    context, identifier
+                ) { progress ->
+                    Timber.d("Downloading wincomponent $identifier: ${(progress * 100).toInt()}%")
+                }
+
+                if (componentFile == null) {
+                    // Legacy variant: use bundled asset
+                    Timber.d("Extracting wincomponent $identifier from bundled assets")
+                    TarCompressorUtils.extract(
+                        TarCompressorUtils.Type.ZSTD, context.assets,
+                        "wincomponents/$identifier.tzst", windowsDir, onExtractFileListener,
+                    )
+                } else {
+                    // Modern variant: use downloaded file
+                    Timber.d("Extracting wincomponent $identifier from downloaded file: ${componentFile.absolutePath}")
+                    TarCompressorUtils.extract(
+                        TarCompressorUtils.Type.ZSTD, componentFile,
+                        windowsDir, onExtractFileListener,
+                    )
+                }
             } else {
                 val dlnames = wincomponentsJSONObject.getJSONArray(identifier)
                 for (i in 0 until dlnames.length()) {
@@ -4710,7 +4801,7 @@ private fun extractWinComponentFiles(
     }
 }
 
-private fun extractGraphicsDriverFiles(
+private suspend fun extractGraphicsDriverFiles(
     context: Context,
     graphicsDriver: String,
     dxwrapper: String,
@@ -4794,18 +4885,8 @@ private fun extractGraphicsDriverFiles(
             }
 
             if (changed) {
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD,
-                    context.assets,
-                    "graphics_driver/turnip-${turnipVersion}.tzst",
-                    rootDir,
-                )
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD,
-                    context.assets,
-                    "graphics_driver/zink-${zinkVersion}.tzst",
-                    rootDir,
-                )
+                extractGraphicsDriverComponent(context, "turnip-$turnipVersion", rootDir)
+                extractGraphicsDriverComponent(context, "zink-$zinkVersion", rootDir)
             }
         } else if (graphicsDriver == "virgl") {
             envVars.put("GALLIUM_DRIVER", "virpipe")
@@ -4815,10 +4896,7 @@ private fun extractGraphicsDriverFiles(
             envVars.put("MESA_GL_VERSION_OVERRIDE", "3.1")
             envVars.put("vblank_mode", "0")
             if (changed) {
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD, context.assets,
-                    "graphics_driver/virgl-${virglVersion}.tzst", rootDir,
-                )
+                extractGraphicsDriverComponent(context, "virgl-$virglVersion", rootDir)
             }
         } else if (graphicsDriver == "vortek") {
             Timber.i("Setting Vortek env vars")
@@ -4832,8 +4910,8 @@ private fun extractGraphicsDriverFiles(
                 envVars.put("WINE_D3D_CONFIG", "renderer=gdi")
             }
             if (changed) {
-                TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, "graphics_driver/vortek-2.1.tzst", rootDir)
-                TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, "graphics_driver/zink-22.2.5.tzst", rootDir)
+                extractGraphicsDriverComponent(context, "vortek-2.1", rootDir)
+                extractGraphicsDriverComponent(context, "zink-22.2.5", rootDir)
             }
         } else if (graphicsDriver == "adreno" || graphicsDriver == "sd-8-elite") {
             val assetZip = if (graphicsDriver == "adreno") "Adreno_${adrenoVersion}_adpkg.zip" else "SD8Elite_${sd8EliteVersion}.zip"
@@ -4874,8 +4952,8 @@ private fun extractGraphicsDriverFiles(
                 envVars.put("WINE_D3D_CONFIG", "renderer=gdi")
             }
             if (changed) {
-                TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, "graphics_driver/vortek-2.1.tzst", rootDir)
-                TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, "graphics_driver/zink-22.2.5.tzst", rootDir)
+                extractGraphicsDriverComponent(context, "vortek-2.1", rootDir)
+                extractGraphicsDriverComponent(context, "zink-22.2.5", rootDir)
             }
         }
     } else {
@@ -4928,28 +5006,24 @@ private fun extractGraphicsDriverFiles(
         if (ALWAYS_REEXTRACT || firstTimeBoot || mainWrapperSelection != lastInstalledMainWrapper) {
             // We only extract if the selection is actually a wrapper file.
             if (mainWrapperSelection.lowercase(Locale.getDefault()).startsWith("wrapper")) {
-                val assetPath = "graphics_driver/" + mainWrapperSelection.lowercase(Locale.getDefault()) + ".tzst"
-                Log.d("GraphicsDriverExtraction", "WRAPPER selection changed or first boot. Extracting: " + assetPath)
-                val success: Boolean = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.getAssets(), assetPath, rootDir)
-                if (success) {
+                val wrapperComponentId = mainWrapperSelection.lowercase(Locale.getDefault())
+                Log.d("GraphicsDriverExtraction", "WRAPPER selection changed or first boot. Extracting: $wrapperComponentId")
+                try {
+                    extractGraphicsDriverComponent(context, wrapperComponentId, rootDir!!)
                     // After success, save the new version so we don't re-extract next time.
                     container.putExtra("lastInstalledMainWrapper", mainWrapperSelection)
                     container.saveData()
+                } catch (e: Exception) {
+                    Log.e("GraphicsDriverExtraction", "Failed to extract wrapper: ${e.message}")
                 }
                 Log.d("XServerDisplayActivity", "First time container boot, extracting extra_libs.tzst")
-                TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD,
-                    context.getAssets(),
-                    "graphics_driver/extra_libs.tzst",
-                    rootDir,
-                )
+                extractGraphicsDriverComponent(context, "extra_libs", rootDir!!)
                 val renderer = GPUInformation.getRenderer(null, null)
                 if (container.wineVersion.contains("arm64ec") && renderer?.contains("Mali") != true) {
-                    TarCompressorUtils.extract(
-                        TarCompressorUtils.Type.ZSTD,
-                        context.assets,
-                        "graphics_driver/zink_dlls" + ".tzst",
-                        File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows"),
+                    extractGraphicsDriverComponent(
+                        context,
+                        "zink_dlls",
+                        File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows")
                     )
                 }
             }
