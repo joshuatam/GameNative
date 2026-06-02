@@ -72,7 +72,7 @@ android {
         )
 
         ndk {
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+            //abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
         }
 
         // Localization support - specify which languages to include
@@ -114,11 +114,13 @@ android {
             targetSdk = 28
             buildConfigField("boolean", "MODERN_ANDROID", "false")
             buildConfigField("String", "PRELOAD_BIONIC_SO", "\"libredirect-bionic.so\"")
+            ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
         create("modern") {
             dimension = "androidApi"
             minSdk = 29
             targetSdk = 36
+            ndk.abiFilters += listOf("arm64-v8a")
             buildConfigField("boolean", "MODERN_ANDROID", "true")
             buildConfigField("String", "PRELOAD_BIONIC_SO", "\"libredirect-bionic-wx.so\"")
         }
@@ -198,10 +200,16 @@ android {
             assets {
                 srcDirs("src/legacy/assets", "src/main/assets")
             }
+            jniLibs {
+                srcDirs("src/legacy/jniLibs", "src/main/jniLibs")
+            }
         }
         getByName("modern") {
             assets {
                 srcDirs("src/modern/assets", "src/main/assets")
+            }
+            jniLibs {
+                srcDirs("src/modern/jniLibs", "src/main/jniLibs")
             }
         }
     }
