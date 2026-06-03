@@ -112,15 +112,17 @@ android {
         create("legacy") {
             dimension = "androidApi"
             targetSdk = 28
+            ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            packaging.jniLibs.useLegacyPackaging = true
             buildConfigField("boolean", "MODERN_ANDROID", "false")
             buildConfigField("String", "PRELOAD_BIONIC_SO", "\"libredirect-bionic.so\"")
-            ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
         create("modern") {
             dimension = "androidApi"
             minSdk = 29
             targetSdk = 36
             ndk.abiFilters += listOf("arm64-v8a")
+            packaging.jniLibs.useLegacyPackaging = false
             buildConfigField("boolean", "MODERN_ANDROID", "true")
             buildConfigField("String", "PRELOAD_BIONIC_SO", "\"libredirect-bionic-wx.so\"")
         }
