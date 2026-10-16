@@ -5890,7 +5890,7 @@ internal fun resolveDisplayX11(container: Container?): Boolean {
 private fun refreshComponentsFiles(context: Context) {
     val extractionPairs = listOf(
         "pulseaudio-gamenative-20260919.tzst" to File(context.filesDir, "pulseaudio"),
-        "gamescope-gamenative-20261016e.tzst" to File(context.filesDir, "gamescope"),
+        "gamescope-gamenative-20261016f.tzst" to File(context.filesDir, "gamescope"),
     )
 
     AssetUtils.extractComponentsWithVersionCheck(
