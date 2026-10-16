@@ -102,6 +102,17 @@ in the sense of GPL-3.0 §0 ("based on").
 
 ---
 
+## libgamenative_drm.so (Proprietary)
+
+**Component:** `libgamenative_drm.so`
+**Location:** `app/src/main/jniLibs/arm64-v8a/libgamenative_drm.so`
+**License:** Proprietary — all rights reserved by the GameNative maintainers.
+
+`libgamenative_drm.so` is the userspace DRM replacement developed by the GameNative
+maintainers for gamescope mode. It presents a DRM device to the compositor, publishes
+the composited frames to an Android `SurfaceControl` layer, and forwards injected input
+to the compositor's Wayland seat. Its source is not distributed with this application.
+
 ## Steam Client Bootstrap Shim (Source Withheld)
 
 **Component:** `libsteambootstrap.so`
@@ -478,6 +489,17 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
+
+## XWayland
+
+**Component:** `Xwayland`
+**Location:** `app/src/main/assets/gamescope-gamenative-*.tzst` (`bin/Xwayland`)
+**Source:** https://gitlab.freedesktop.org/xorg/xserver
+**License:** MIT
+
+The gamescope payload carries an XWayland built for Android from the X.Org server, which
+provides the X server wine's `winex11.drv` connects to in gamescope mode. The licence text
+is `COPYING` in that source tree.
 
 ## Achievement Sound
 
