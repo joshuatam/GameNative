@@ -11,6 +11,20 @@ object AssetUtils {
     }
 
     /**
+     * Delete a tree even when an earlier payload left it read-only. A read-only
+     * directory blocks deleteRecursively, so the promote fails and the device
+     * silently keeps running the stale payload.
+     */
+    private fun deleteTree(dir: File) {
+        if (!dir.exists()) return
+        dir.walkBottomUp().forEach {
+            it.setWritable(true, false)
+            it.setExecutable(true, false)
+        }
+        dir.deleteRecursively()
+    }
+
+    /**
      * Extracts component files.
      * Always extracts assets to target directories.
      *
@@ -26,7 +40,7 @@ object AssetUtils {
         for ((assetFile, targetDir) in extractionPairs) {
             log().i("Extracting $assetFile to ${targetDir.absolutePath}")
             val tempDir = File(targetDir.parentFile, "${targetDir.name}.tmp")
-            if (tempDir.exists()) tempDir.deleteRecursively()
+            deleteTree(tempDir)
             tempDir.mkdirs()
 
             val success = TarCompressorUtils.extract(
@@ -37,15 +51,15 @@ object AssetUtils {
             )
 
             if (success) {
-                if (targetDir.exists()) targetDir.deleteRecursively()
+                deleteTree(targetDir)
                 if (!tempDir.renameTo(targetDir)) {
                     log().e("Failed to promote extracted dir for $assetFile")
-                    tempDir.deleteRecursively()
+                    deleteTree(tempDir)
                     continue
                 }
                 log().i("Successfully extracted $assetFile")
             } else {
-                tempDir.deleteRecursively()
+                deleteTree(tempDir)
                 log().e("Failed to extract $assetFile")
             }
         }

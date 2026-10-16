@@ -284,6 +284,7 @@ class MainViewModel @Inject constructor(
     }
 
     private val onClearBootingSplash: (AndroidEvent.ClearBootingSplash) -> Unit = {
+        bootAwaitingGameWindow = false
         bootingSplashTimeoutJob?.cancel()
         bootingSplashTimeoutJob = null
         bootAwaitingGameWindow = false

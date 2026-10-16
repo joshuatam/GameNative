@@ -10,13 +10,17 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
+import android.system.Os;
 import android.provider.ContactsContract;
 import android.util.Log;
+import android.view.Display;
 
 import androidx.annotation.NonNull;
 
 import com.winlator.PrefManager;
 
+import app.gamenative.PluviaApp;
+import app.gamenative.display.GamescopeSettings;
 import app.gamenative.utils.LsfgVkManager;
 import com.winlator.box86_64.Box86_64Preset;
 import com.winlator.box86_64.Box86_64PresetManager;
@@ -29,6 +33,7 @@ import com.winlator.core.Callback;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.envvars.EnvVarRedaction;
 import com.winlator.core.envvars.EnvVars;
+import com.winlator.core.AppUtils;
 import com.winlator.core.FileUtils;
 import com.winlator.core.GPUInformation;
 import com.winlator.core.ProcessHelper;
@@ -269,7 +274,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         envVars.put("USER", ImageFs.USER);
         envVars.put("TMPDIR", rootDir.getPath() + "/usr/tmp");
         new File(imageFs.home_path + "/.wine/drive_c" + rootDir.getPath() + "/usr/tmp").mkdirs();
-        envVars.put("DISPLAY", ":0");
+
+        // Gamescope owns DISPLAY for its children (its Xwayland); only X11 mode claims :0 here.
+        final boolean gamescopeMode = isGamescopeMode();
+        if (!gamescopeMode) {
+            envVars.put("DISPLAY", ":0");
+        }
 
         String winePath = imageFs.getWinePath() + "/bin";
 
@@ -398,11 +408,19 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (LsfgVkManager.isSupported(container)) {
             LsfgVkManager.ensureRuntimeInstalled(environment.getContext(), container);
             LsfgVkManager.writeConfig(container);
-            LsfgVkManager.applyLaunchEnv(container, envVars);
-            if (LsfgVkManager.isArmed(container)) {
-                final android.content.Context lsfgContext = environment.getContext();
-                new Thread(() -> LsfgVkManager.prepareNativeCache(lsfgContext, container),
-                    "lsfg-native-cache").start();
+            // LSFG is an X11-arm feature. Under gamescope the compositor owns presentation
+            // and pacing, and the lsfg-vk layer's failed device init on this driver's Turnip
+            // takes gamescope's own vkCreateDevice down with it — so a gamescope session must
+            // not load the layer at all. Leave its implicit manifest absent and export nothing.
+            if (gamescopeMode) {
+                LsfgVkManager.disableLayer(container);
+            } else {
+                LsfgVkManager.applyLaunchEnv(container, envVars);
+                if (LsfgVkManager.isArmed(container)) {
+                    final android.content.Context lsfgContext = environment.getContext();
+                    new Thread(() -> LsfgVkManager.prepareNativeCache(lsfgContext, container),
+                        "lsfg-native-cache").start();
+                }
             }
         }
 
@@ -412,6 +430,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         catch (IllegalStateException e) {
             Log.e("BionicProgramLauncherComponent", e.getMessage());
             return -1;
+        }
+
+        if (gamescopeMode) {
+            applyGamescopeEnv(context, envVars, rootDir);
         }
 
         Log.d("BionicProgramLauncherComponent", "env vars are " + EnvVarRedaction.redact(envVars));
@@ -428,7 +450,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             command = command.trim();
         }
         else {
-            command = getFinalCommand(winePath, emulator, envVars, imageFs.getBinDir(), guestExecutable);
+            command = getFinalCommand(winePath, emulator, envVars, imageFs.getBinDir(), guestExecutable, gamescopeMode);
         }
 
         // **Maybe remove this: Set execute permissions for box64 if necessary (Glibc/Proot artifact)
@@ -449,8 +471,85 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         });
     }
 
+    // Gamescope payload paths: everything is payload-relative (build-host prefixes don't exist on device).
+    private void applyGamescopeEnv(Context context, EnvVars envVars, File rootDir) {
+        String gsDir = context.getFilesDir().getPath() + "/gamescope";
+
+        // Append the shim, never prepend: its opens pass straight through to syscalls, so going first would hide the base prefix's DLLs from libgnoverlay/wine.
+        String preload = envVars.get("LD_PRELOAD");
+        envVars.put("LD_PRELOAD", preload.isEmpty()
+                ? gsDir + "/lib/libgndrm_shim.so"
+                : preload + ":" + gsDir + "/lib/libgndrm_shim.so");
+        String libPath = envVars.get("LD_LIBRARY_PATH");
+        envVars.put("LD_LIBRARY_PATH", libPath.isEmpty() ? gsDir + "/lib" : gsDir + "/lib:" + libPath);
+        // gamescope execvp's gamescopereaper and wlroots spawns xkbcomp.
+        String path = envVars.get("PATH");
+        envVars.put("PATH", path.isEmpty() ? gsDir + "/bin" : gsDir + "/bin:" + path);
+
+        File xdgRunDir = new File(rootDir, "tmp/xdg-run");
+        xdgRunDir.mkdirs();
+        FileUtils.chmod(xdgRunDir, 0700);
+        envVars.put("XDG_RUNTIME_DIR", xdgRunDir.getPath());
+        envVars.put("GAMENATIVE_DRM_SOCKET", "gndrm");
+
+        envVars.put("XKB_CONFIG_ROOT", gsDir + "/share/xkeyboard-config-2");
+        envVars.put("GAMESCOPE_PNP_IDS_PATH", gsDir + "/share/hwdata/pnp.ids");
+        envVars.put("__EGL_VENDOR_LIBRARY_DIRS", gsDir + "/share/glvnd/egl_vendor.d");
+        envVars.put("LIBGL_DRIVERS_PATH", gsDir + "/lib/dri");
+        envVars.put("MESA_LOADER_DRIVER_OVERRIDE", "zink");
+        envVars.put("WLR_XWAYLAND", gsDir + "/bin/Xwayland");
+
+        // wlroots binds the X11 sockets here; gamescope's libX11 would resolve ":0" to a build-host dir, so it gets the socket path.
+        String x11SocketDir = rootDir.getPath() + "/usr/tmp";
+        new File(x11SocketDir).mkdirs();
+        envVars.put("WLR_X11_SOCKET_DIR", x11SocketDir);
+        envVars.put("GAMESCOPE_X11_DISPLAY", x11SocketDir + "/.X11-unix/X0");
+
+        File sessionIcd = new File(context.getFilesDir(), "gamescope/share/vulkan/icd.d/adrenotools_gamescope.aarch64.json");
+        envVars.put("VK_ICD_FILENAMES", sessionIcd.getAbsolutePath());
+
+        // The guest image name for the session reaper's game-exit watch. The wine
+        // wrapper chain (explorer -> winhandler) outlives the game, so the reaper
+        // cannot use the primary child; it ends the session when this image is
+        // gone (see gamescopereaper.cpp). Absent for container-only sessions.
+        String gameExecutable = container != null ? container.getExecutablePath() : "";
+        if (gameExecutable != null && !gameExecutable.isEmpty()) {
+            int separator = Math.max(gameExecutable.lastIndexOf('/'), gameExecutable.lastIndexOf('\\'));
+            String gameImage = separator >= 0 ? gameExecutable.substring(separator + 1) : gameExecutable;
+            if (!gameImage.isEmpty())
+                envVars.put("GAMENATIVE_GAME_PROCESS", gameImage);
+        }
+
+        // Same source as gamescope's -W/-H, so the two cannot drift.
+        int[] scanoutOutput = displaySize();
+        if (scanoutOutput == null)
+            scanoutOutput = AppUtils.parseScreenSize(container != null ? container.getScreenSize() : null);
+        if (scanoutOutput != null)
+            envVars.put("GNDRM_SCANOUT", scanoutOutput[0] + "x" + scanoutOutput[1]);
+
+        Log.i("BionicProgramLauncherComponent", "Gamescope display server active; bin="
+                + new File(gsDir, "bin/gamescope").exists() + " shim="
+                + new File(gsDir, "lib/libgndrm_shim.so").exists() + " xwayland="
+                + new File(gsDir, "bin/Xwayland").exists() + " xdg=" + xdgRunDir.getPath());
+    }
+
+    /** Mirrors XServerScreen.resolveGamescopeMode; a session override (setGamescopeModeOverride) wins to force X11 for the open-container session (the setup/pre-install session has no separate arm and follows the game arm). */
+    private boolean isGamescopeMode() {
+        if (gamescopeModeOverride != null) return gamescopeModeOverride;
+        if (container == null) return false;
+        return Container.DISPLAY_SERVER_GAMESCOPE.equalsIgnoreCase(container.getDisplayServer());
+    }
+
+    /** null = decide from the container/profile (see isGamescopeMode). */
+    private Boolean gamescopeModeOverride = null;
+
+    public void setGamescopeModeOverride(Boolean override) {
+        gamescopeModeOverride = override;
+    }
+
+    /** @param isGamescope true only for the guest launch; shell commands (e.g. wineserver -k) run with a different env and would fail to load the gamescope binary. */
     @NonNull
-    private String getFinalCommand(String winePath, String emulator, EnvVars envVars, File binDir, String guestExecutable) {
+    private String getFinalCommand(String winePath, String emulator, EnvVars envVars, File binDir, String guestExecutable, boolean isGamescope) {
         String command;
         if (wineInfo.isArm64EC()) {
             command = winePath + "/" + guestExecutable;
@@ -461,7 +560,72 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         }
         else
             command = binDir + "/box64 " + guestExecutable;
+
+        if (isGamescope) {
+            // -W/-H = output (Surface/mode) size, not the game size; --expose-wayland keeps gamescope's socket for the ICD shim; XWayland (count 1) serves wine's X11.
+            command = wrapWithGamescope(command);
+        }
+
         return command;
+    }
+
+    /** Prefix {@code command} with the gamescope wrapper used for guest launches. */
+    private String wrapWithGamescope(String command) {
+        String gamescope = environment.getContext().getFilesDir().getPath() + "/gamescope/bin/gamescope";
+        // The display's real capability decides, not just the container flag: HDR
+        // output is only asked for (and the daemon only advertises a 10-bit plane
+        // and a truthful HDR EDID) when this panel actually reports HDR types.
+        Display.HdrCapabilities hdrCaps = PluviaApp.getDisplayHdrCapabilities();
+        boolean hdr = container != null && container.isHdrEnabled() && hdrCaps != null;
+        // The gndrm KMS emulator/presenter runs in THIS process (libgamenative_drm.so). It gates
+        // its 10-bit plane-format advertisement on GNDRM_HDR because gamescope picks a 10-bit
+        // scan-out format unconditionally once the plane offers one — so the daemon must only offer
+        // one when HDR output is asked for, or the SDR path moves onto a 10-bit buffer. It also
+        // builds the connector EDID from the panel luminances set here. Set here: the daemon is
+        // already running, gamescope has not queried the connector yet, and it is before the guest
+        // is forked (the child inherits the value harmlessly).
+        setGndrmHdrEnv(hdr, hdrCaps);
+        // No --xwayland-count: the default of 1 spawns a single XWayland (our WLR_XWAYLAND payload binary).
+        // --scaler carries the container's Scaling Mode: gamescope accepts the scaler only at launch.
+        // --hdr-itm-enabled rides with --hdr-enabled: it inverse-tone-maps SDR input onto the HDR output, which is what puts an SDR game on the HDR10 panel (gamescope's HDR output is SDR-tone-mapped SDR otherwise).
+        return gamescope + " --backend drm --expose-wayland"
+                + (hdr ? " --hdr-enabled --hdr-itm-enabled" : "")
+                + GamescopeSettings.scalerArg(container)
+                + gamescopeModeGeometry() + " -- " + command;
+    }
+
+    /** Set the daemon's HDR-output intent and the panel luminances in this process's environment (best effort; the daemon defaults to the 8-bit SDR path). */
+    private static void setGndrmHdrEnv(boolean hdr, Display.HdrCapabilities caps) {
+        try {
+            Os.setenv("GNDRM_HDR", hdr ? "1" : "0", true);
+            if (hdr && caps != null) {
+                // The panel's real luminances (nits); the daemon encodes them into the
+                // EDID's CTA HDR static metadata block. A reported 0 leaves the daemon's
+                // own default for that field.
+                Os.setenv("GNDRM_HDR_MAX_NITS", Float.toString(caps.getDesiredMaxLuminance()), true);
+                Os.setenv("GNDRM_HDR_FALL_NITS", Float.toString(caps.getDesiredMaxAverageLuminance()), true);
+                Os.setenv("GNDRM_HDR_MIN_NITS", Float.toString(caps.getDesiredMinLuminance()), true);
+            }
+        }
+        catch (Exception ignored) {
+            // The daemon reads the variable defensively; a failure leaves SDR output, never a broken HDR path.
+        }
+    }
+
+    /** "-W <w> -H <h> -w <w> -h <h>": -W/-H from the real display (matches the panel, no resample), -w/-h from the container screen size; either pair omitted if unknown. */
+    private String gamescopeModeGeometry() {
+        int[] containerSize = AppUtils.parseScreenSize(container != null ? container.getScreenSize() : null);
+        int[] output = displaySize();
+        if (output == null) output = containerSize;
+        StringBuilder args = new StringBuilder();
+        if (output != null) args.append(" -W ").append(output[0]).append(" -H ").append(output[1]);
+        if (containerSize != null) args.append(" -w ").append(containerSize[0]).append(" -h ").append(containerSize[1]);
+        return args.toString();
+    }
+
+    /** The real display size, from the app's cached default, or null if unparseable. */
+    private static int[] displaySize() {
+        return AppUtils.parseScreenSize(PluviaApp.getDefaultScreenSize());
     }
 
     private void extractBox64Files() {
@@ -762,7 +926,8 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (extraEnv != null) envVars.putAll(extraEnv);
         if (unsetEnv != null) for (String name : unsetEnv) envVars.remove(name);
 
-        String finalCommand = getFinalCommand(winePath, emulator, envVars, imageFs.getBinDir(), command);
+        // Never gamescope-wrap shell commands (wineserver -k, winetricks, ...): they run wine directly with this method's env.
+        String finalCommand = getFinalCommand(winePath, emulator, envVars, imageFs.getBinDir(), command, false);
 
         File box64File = new File(rootDir, "/usr/bin/box64");
         if (box64File.exists()) {
