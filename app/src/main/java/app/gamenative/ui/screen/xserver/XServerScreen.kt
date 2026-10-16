@@ -290,6 +290,7 @@ private const val EXIT_PROCESS_RESPONSE_TIMEOUT_MS = 2_000L
 private const val QUICK_MENU_PROCESS_POLL_INTERVAL_MS = 2_000L
 private const val DEFAULT_FPS_LIMITER_MAX_HZ = 60
 private const val DEFAULT_FPS_LIMITER_TARGET_HZ = 60
+private const val FPS_LIMITER_MAX_MULTIPLIER = 2
 private const val FPS_LIMITER_ENABLED_EXTRA = "fpsLimiterEnabled"
 private const val FPS_LIMITER_TARGET_EXTRA = "fpsLimiterTarget"
 internal const val PHYSICAL_CONTROLLER_DIALOG_NONE = 0
@@ -787,7 +788,10 @@ fun XServerScreen(
             ShmFramePacer.setFrameRateLimit(capFps)
             true
         }
-        val detectedMax = detectMaxRefreshRateHz(context, ui.xServerView as? View)
+        // Scaled here, not in the resolver, which must keep returning the display's real rate.
+        // The factor is small on purpose: enough headroom above the panel to raise the cap,
+        // not enough to invite a target the device should not sustain.
+        val detectedMax = detectMaxRefreshRateHz(context, ui.xServerView as? View) * FPS_LIMITER_MAX_MULTIPLIER
         ui.detectedMaxRefreshRateHz = detectedMax
         val clampedTarget = fpsLimiterTarget.coerceAtMost(detectedMax).coerceAtLeast(5)
         if (clampedTarget != fpsLimiterTarget) {
@@ -2038,6 +2042,9 @@ fun XServerScreen(
                 // Gamescope display-server mode: the gndrm daemon consumes the view's Surface and retargets input; the X11 path is unchanged when false.
                 (xServerViewInstance as XServerView).isGamescopeMode = true
                 xServerToUse.setInputEventSink(GamescopeInputSink())
+                // Ahead of nativeStart, which fixes the emulated mode's rate from this
+                // view's surface callback, so the panel's real rate must be set first.
+                GameNativeDrm.nativeSetPanelRefreshHz(detectMaxRefreshRateHz(context, xServerViewInstance as? View))
             }
 
             val xServerView = xServerViewInstance.apply {
@@ -5883,7 +5890,7 @@ internal fun resolveDisplayX11(container: Container?): Boolean {
 private fun refreshComponentsFiles(context: Context) {
     val extractionPairs = listOf(
         "pulseaudio-gamenative-20260919.tzst" to File(context.filesDir, "pulseaudio"),
-        "gamescope-gamenative-20261016.tzst" to File(context.filesDir, "gamescope"),
+        "gamescope-gamenative-20261016e.tzst" to File(context.filesDir, "gamescope"),
     )
 
     AssetUtils.extractComponentsWithVersionCheck(

@@ -587,10 +587,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         setGndrmHdrEnv(hdr, hdrCaps);
         // No --xwayland-count: the default of 1 spawns a single XWayland (our WLR_XWAYLAND payload binary).
         // --scaler carries the container's Scaling Mode: gamescope accepts the scaler only at launch.
+        // -r pins the vblank grid above the panel rate: the grid is the compositor's paint/frame-done tick, and the rate the daemon advertises as the mode is the panel's own, so without -r gamescope would derive the grid from the panel and clamp every present to it.
         // --hdr-itm-enabled rides with --hdr-enabled: it inverse-tone-maps SDR input onto the HDR output, which is what puts an SDR game on the HDR10 panel (gamescope's HDR output is SDR-tone-mapped SDR otherwise).
         return gamescope + " --backend drm --expose-wayland"
                 + (hdr ? " --hdr-enabled --hdr-itm-enabled" : "")
                 + GamescopeSettings.scalerArg(container)
+                + GamescopeSettings.gridArg()
                 + gamescopeModeGeometry() + " -- " + command;
     }
 

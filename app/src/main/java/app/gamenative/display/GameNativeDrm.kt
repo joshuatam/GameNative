@@ -27,6 +27,16 @@ object GameNativeDrm {
         PluviaApp.events.emit(AndroidEvent.ClearBootingSplash)
     }
 
+    /**
+     * Tell the daemon the panel's real refresh rate in whole hertz, before [nativeStart]:
+     * it becomes the rate of the mode the daemon exposes, i.e. the refresh gamescope
+     * advertises to clients, while the session's vblank grid stays the daemon's own
+     * constant. The daemon ignores an out-of-range value (0 when the panel could not be
+     * read) and keeps its own default, so a failed read leaves the session running.
+     */
+    @JvmStatic
+    external fun nativeSetPanelRefreshHz(refreshHz: Int)
+
     /** Start the daemon: create the SurfaceControl layer on [surface], then serve [socketName]. */
     @JvmStatic
     external fun nativeStart(socketName: String, surface: Surface, width: Int, height: Int): Int

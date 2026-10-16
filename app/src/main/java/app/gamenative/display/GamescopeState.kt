@@ -33,6 +33,20 @@ object GamescopeSettings {
     const val SHARPNESS_STEPS = 5
     const val SHARPNESS_DEFAULT = SHARPNESS_STEPS
 
+    /**
+     * The vblank grid a gamescope session is launched with (`-r`), in Hz. The grid is
+     * the compositor's paint tick and the flip-event cadence, and gndrm-daemon builds
+     * its own timeline on the same rate, so the two agree by construction.
+     *
+     * It is deliberately above the panel's real rate: the grid bounds the compositor's
+     * loop, and launching above the panel lets a title present more often than the panel
+     * refreshes instead of being clamped to it. The rate the daemon advertises to clients
+     * is the panel's own, passed separately (`GameNativeDrm.nativeSetPanelRefreshHz`);
+     * without `-r` gamescope would derive the grid from that advertised rate and clamp
+     * every present to it. Mirrors gndrm-daemon's `SESSION_REFRESH_MHZ`.
+     */
+    const val SESSION_GRID_HZ = 1200
+
     /** gamescope's raw `scaling_sharpness` (0 = maximum sharpening) for a stored UI value. */
     fun sharpnessRawValue(ui: Int): Int =
         (SHARPNESS_STEPS - ui.coerceIn(0, SHARPNESS_STEPS)) * 4
@@ -49,6 +63,14 @@ object GamescopeSettings {
             ?: GamescopeScalingMode.DEFAULT
         return if (mode == GamescopeScalingMode.DEFAULT) "" else " --scaler ${mode.id}"
     }
+
+    /**
+     * The `-r <grid>` argument for a session's launch command, holding the grid at
+     * [SESSION_GRID_HZ] so `g_nNestedRefresh` wins over the panel rate the daemon
+     * advertises as the mode (see [SESSION_GRID_HZ]).
+     */
+    @JvmStatic
+    fun gridArg(): String = " -r $SESSION_GRID_HZ"
 
     /**
      * The session's X socket — gamescope's own Xwayland, whose root window the
