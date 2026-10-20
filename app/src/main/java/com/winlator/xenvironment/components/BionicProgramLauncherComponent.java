@@ -517,6 +517,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         File sessionIcd = new File(context.getFilesDir(), "gamescope/share/vulkan/icd.d/adrenotools_gamescope.aarch64.json");
         envVars.put("VK_ICD_FILENAMES", sessionIcd.getAbsolutePath());
+        // System-driver path: guests drive the container's wrapper through the shim (WSI stays in the shim).
+        String graphicsDriver = container != null ? container.getGraphicsDriver() : null;
+        File wrapperIcd = new File(rootDir, "usr/lib/libvulkan_wrapper.so");
+        if (!new File("/dev/kgsl-3d0").exists() && graphicsDriver != null
+                && graphicsDriver.toLowerCase(java.util.Locale.ROOT).startsWith("wrapper") && wrapperIcd.exists())
+            envVars.put("GN_VKSHIM_WRAPPER_ICD", wrapperIcd.getAbsolutePath());
 
         // The guest image name for the session reaper's game-exit watch.
         String gameExecutable = container != null ? container.getExecutablePath() : "";
