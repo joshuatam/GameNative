@@ -92,6 +92,7 @@ object GameNativeDrm {
      * `Lossless.dll`, which the presenter needs because the container's
      * environment does not reach the app's process.
      */
+    @JvmStatic
     external fun nativeSetLsfgConfig(
         enabled: Boolean,
         multiplier: Int,

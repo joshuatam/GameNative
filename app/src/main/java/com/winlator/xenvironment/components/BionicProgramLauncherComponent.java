@@ -21,6 +21,7 @@ import com.winlator.PrefManager;
 
 import app.gamenative.PluviaApp;
 import app.gamenative.display.GamescopeSettings;
+import app.gamenative.utils.LsfgQuickMenuHelper;
 import app.gamenative.utils.LsfgVkManager;
 import com.winlator.box86_64.Box86_64Preset;
 import com.winlator.box86_64.Box86_64PresetManager;
@@ -418,11 +419,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             LsfgVkManager.writeConfig(container);
             // A gamescope session must not load the lsfg-vk layer: its device init on this driver's
             // Turnip takes gamescope's own vkCreateDevice with it. Frame generation runs in the KMS
-            // shim instead, configured through the environment below.
+            // shim instead, configured through the daemon.
             if (gamescopeMode) {
-                // The layer must not load here; the presenter's settings arrive
-                // through the daemon.
                 LsfgVkManager.disableLayer(container);
+                // Sent again now that the DLL is in the container: the session screen's
+                // push can predate the first install, and the presenter needs the path.
+                LsfgQuickMenuHelper.applyDrmSettings(container);
             } else {
                 LsfgVkManager.applyLaunchEnv(container, envVars);
                 if (LsfgVkManager.isArmed(container)) {

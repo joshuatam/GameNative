@@ -352,15 +352,27 @@ object LsfgVkManager {
         container: Container,
         settings: LsfgQuickMenuHelper.Settings,
         enabled: Boolean,
+        fpsLimit: Int,
     ) {
         GameNativeDrm.nativeSetLsfgConfig(
             enabled,
             settings.multiplier,
             (settings.flowScale * 1000f).toInt(),
             settings.performanceMode,
-            fpsLimit(container),
+            fpsLimit,
             containerDllPath(container) ?: "",
         )
+    }
+
+    /**
+     * The source cap for a gamescope session, read the way the session screen reads it:
+     * the limiter is on at 60 until the user changes it, and those extras are only
+     * written once the user does, so an unset limiter is 60 here, not off.
+     */
+    @JvmStatic
+    fun gamescopeFpsLimit(container: Container): Int {
+        if (!parseBool(container.getExtra(EXTRA_FPS_LIMITER_ENABLED, "true"))) return 0
+        return container.getExtra(EXTRA_FPS_LIMITER_TARGET, "").toIntOrNull()?.takeIf { it > 0 } ?: 60
     }
 
     /** Push the container's LSFG settings into the host renderer's native pipeline. */

@@ -67,7 +67,7 @@ object LsfgQuickMenuHelper {
     fun sanitizeFlowScale(flowScale: Float): Float =
         flowScale.coerceIn(0.25f, 1.0f)
 
-    fun applySettings(container: Container, settings: Settings) {
+    fun applySettings(container: Container, settings: Settings, fpsLimit: Int? = null) {
         val multiplier = sanitizeMultiplier(settings.multiplier)
         val flowScale = sanitizeFlowScale(settings.flowScale)
 
@@ -90,12 +90,31 @@ object LsfgQuickMenuHelper {
             LsfgVkManager.refreshNativeRuntime(container)
         } else {
             // A gamescope session has no renderer to push into: the presenter gets
-            // the new settings through the daemon. Session start is the launcher's
-            // job; this is the mid-session path only.
+            // the new settings through the daemon. Synchronous, because the session
+            // screen sends them right before the daemon starts and the presenter opens
+            // its session from whatever the daemon holds at the first present.
             val applied = Settings(effectiveMultiplier, flowScale, settings.performanceMode)
             // `effectiveEnabled` carries "off": the presenter cannot infer it from
             // the multiplier, which is clamped to 2 when disabled.
-            applyExecutor.execute { LsfgVkManager.applyDrmRuntime(container, applied, effectiveEnabled) }
+            LsfgVkManager.applyDrmRuntime(
+                container,
+                applied,
+                effectiveEnabled,
+                fpsLimit ?: LsfgVkManager.gamescopeFpsLimit(container),
+            )
         }
+    }
+
+    /** Push the container's saved settings to the presenter, for a launch. */
+    @JvmStatic
+    fun applyDrmSettings(container: Container) {
+        val settings = readSettings(container)
+        val enabled = settings.multiplier >= 2
+        LsfgVkManager.applyDrmRuntime(
+            container,
+            Settings(if (enabled) settings.multiplier else 2, settings.flowScale, settings.performanceMode),
+            enabled,
+            LsfgVkManager.gamescopeFpsLimit(container),
+        )
     }
 }
