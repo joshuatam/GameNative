@@ -726,8 +726,9 @@ fun XServerScreen(
             ShmFramePacer.setFrameRateLimit(limit)
         } else {
             // Gamescope owns the present path, so the cap goes to it instead of the X11 engines above.
-            // Stored in the queue's desired state (one frame-rate domain) and re-applied with the rest.
-            GamescopeCommandQueue.setFpsLimit(limit)
+            // With frame generation active the presenter owns pacing, exactly as the layer does on X11:
+            // the cap is disarmed and the output rate becomes limit x multiplier.
+            GamescopeCommandQueue.setFpsLimit(if (isLsfgAvailable && lsfgMultiplier >= 2) 0 else limit)
         }
 
         PowerManager.targetFps = limit
@@ -2049,6 +2050,10 @@ fun XServerScreen(
                     // Ahead of nativeStart, which fixes the emulated mode's rate from this
                     // view's surface callback, so the panel's real rate must be set first.
                     GameNativeDrm.nativeSetPanelRefreshHz(detectMaxRefreshRateHz(context, xServerViewInstance as? View))
+                    // The presenter opens its frame-generation session on the first
+                    // present, from whatever the daemon holds: without this the daemon
+                    // has nothing until the first Quick Menu change.
+                    applyLsfgSettings()
                 }
             }
 

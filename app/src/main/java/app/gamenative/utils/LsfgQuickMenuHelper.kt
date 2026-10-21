@@ -1,5 +1,6 @@
 package app.gamenative.utils
 
+import app.gamenative.ui.screen.xserver.resolveDisplayX11
 import com.winlator.container.Container
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -77,13 +78,24 @@ object LsfgQuickMenuHelper {
 
         val effectiveEnabled = multiplier >= 2
         val effectiveMultiplier = if (effectiveEnabled) multiplier else 2
-        LsfgVkManager.updateConfigAtRuntime(
-            container,
-            effectiveEnabled,
-            effectiveMultiplier,
-            flowScale,
-            settings.performanceMode,
-        )
-        LsfgVkManager.refreshNativeRuntime(container)
+
+        if (resolveDisplayX11(container)) {
+            LsfgVkManager.updateConfigAtRuntime(
+                container,
+                effectiveEnabled,
+                effectiveMultiplier,
+                flowScale,
+                settings.performanceMode,
+            )
+            LsfgVkManager.refreshNativeRuntime(container)
+        } else {
+            // A gamescope session has no renderer to push into: the presenter gets
+            // the new settings through the daemon. Session start is the launcher's
+            // job; this is the mid-session path only.
+            val applied = Settings(effectiveMultiplier, flowScale, settings.performanceMode)
+            // `effectiveEnabled` carries "off": the presenter cannot infer it from
+            // the multiplier, which is clamped to 2 when disabled.
+            applyExecutor.execute { LsfgVkManager.applyDrmRuntime(container, applied, effectiveEnabled) }
+        }
     }
 }
