@@ -666,9 +666,10 @@ fun XServerScreen(
     // Use a central fpsProvider for 2 call sites
     val fpsProvider: () -> Float = {
         val raw = ui.frameRating?.currentFPS ?: 0f
-        if (isLsfgAvailable && lsfgMultiplier >= 2) {
+        if (isLsfgAvailable && lsfgMultiplier >= 2 && resolveDisplayX11(container)) {
             // Only trust the layer's own measurement; multiplying raw fabricates fps for games the layer never
-            // attaches to (SHM-presenting games have no Vulkan swapchain).
+            // attaches to (SHM-presenting games have no Vulkan swapchain). Under gamescope the presenter
+            // generates, and every frame it publishes is counted in raw already.
             LsfgVkManager.readMeasuredFps(container) ?: raw
         } else {
             raw
@@ -744,6 +745,7 @@ fun XServerScreen(
         LsfgQuickMenuHelper.applySettings(
             container,
             LsfgQuickMenuHelper.Settings(lsfgMultiplier, lsfgFlowScale, lsfgPerformanceMode),
+            fpsLimit = effectiveFpsLimit(),
         )
     }
 
