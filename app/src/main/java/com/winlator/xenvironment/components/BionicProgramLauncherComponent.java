@@ -416,10 +416,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (LsfgVkManager.isSupported(container)) {
             LsfgVkManager.ensureRuntimeInstalled(environment.getContext(), container);
             LsfgVkManager.writeConfig(container);
-            // LSFG is an X11-arm feature. Under gamescope the compositor owns presentation and pacing, and the
-            // lsfg-vk layer's failed device init on this driver's Turnip takes gamescope's own vkCreateDevice
-            // down with it — so a gamescope session must not load the layer at all.
+            // A gamescope session must not load the lsfg-vk layer: its device init on this driver's
+            // Turnip takes gamescope's own vkCreateDevice with it. Frame generation runs in the KMS
+            // shim instead, configured through the environment below.
             if (gamescopeMode) {
+                // The layer must not load here; the presenter's settings arrive
+                // through the daemon.
                 LsfgVkManager.disableLayer(container);
             } else {
                 LsfgVkManager.applyLaunchEnv(container, envVars);
@@ -690,7 +692,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         }
     }
 
-    /** "-W <w> -H <h> -w <w> -h <h>": -W/-H from the real display (matches the panel, no resample), -w/-h from the container screen size; either pair omitted if unknown. */
+    /** " -W <w> -H <h> -w <w> -h <h>": -W/-H from the real display (matches the panel, no resample), -w/-h from the container screen size; either pair omitted if unknown. */
     private String gamescopeModeGeometry() {
         int[] containerSize = AppUtils.parseScreenSize(container != null ? container.getScreenSize() : null);
         int[] output = displaySize();
