@@ -691,7 +691,13 @@ class MainViewModel @Inject constructor(
             delay(100)
 
             val container = apiJob.await()
-            if (container.isLaunchHeadlessSteam && !bootAwaitingGameWindow) {
+            // Under gamescope the guest maps its windows on Xwayland, so onWindowMapped never
+            // fires, and the daemon only clears the splash when the guest went through the
+            // shim's WSI proxy (Turnip on Adreno). Any other driver leaves it up forever, so
+            // watch the game process the way headless Steam does.
+            val gamescopeSession = com.winlator.container.Container.DISPLAY_SERVER_GAMESCOPE
+                .equals(container.displayServer, ignoreCase = true)
+            if ((container.isLaunchHeadlessSteam || gamescopeSession) && !bootAwaitingGameWindow) {
                 bootAwaitingGameWindow = true
                 startBootGameExitWatch(context, appId)
             }
