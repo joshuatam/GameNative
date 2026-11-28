@@ -2,6 +2,7 @@ package app.gamenative.ui.screen.library
 
 import app.gamenative.service.store.StoreAdapters
 import app.gamenative.service.store.StoreGames
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -1274,41 +1275,15 @@ private fun LibraryScreenContent(
                 val showFavoritesEmptyState = state.currentTab == LibraryTab.FAVORITES &&
                     favoritesLoaded && !state.isLoading && state.appInfoList.isEmpty()
                 if (showEmptyStateSplash) {
-                    val (messageResId, buttonResId, onAction) = when (state.currentTab) {
-                        LibraryTab.STEAM -> Triple(
-                            R.string.library_source_not_logged_in_steam,
-                            R.string.steam_sign_in,
-                            onGoOnline,
-                        )
-                        LibraryTab.GOG -> Triple(
-                            R.string.library_source_not_logged_in_gog,
-                            R.string.gog_settings_login_title,
-                            { gogOAuthLauncher.launch(Intent(context, GOGOAuthActivity::class.java)) },
-                        )
-                        LibraryTab.EPIC -> Triple(
-                            R.string.library_source_not_logged_in_epic,
-                            R.string.epic_settings_login_title,
-                            { epicOAuthLauncher.launch(Intent(context, EpicOAuthActivity::class.java)) },
-                        )
-                        LibraryTab.AMAZON -> Triple(
-                            R.string.library_source_not_logged_in_amazon,
-                            R.string.amazon_settings_login_title,
-                            { amazonOAuthLauncher.launch(Intent(context, AmazonOAuthActivity::class.java)) },
-                        )
-                        LibraryTab.LOCAL -> Triple(
-                            R.string.library_source_no_custom_games,
-                            R.string.add_custom_game_dialog_title,
-                            onAddCustomGameClick,
-                        )
-                        else -> {
-                            val store = checkNotNull(state.currentTab.store) { "showEmptyStateSplash is true only for sign-in tabs" }
-                            if (StoreGames.availability(context, store) == StoreGames.Availability.UNAVAILABLE) {
-                                Triple(R.string.store_unavailable, null, {})
-                            } else {
-                                Triple(R.string.store_library_signed_out, R.string.store_sign_in, { StoreGames.startSignIn(context, store) })
-                            }
-                        }
-                    }
+                    val (messageResId, buttonResId, onAction) = sourceSplashAction(
+                        tab = state.currentTab,
+                        context = context,
+                        onGoOnline = onGoOnline,
+                        onAddCustomGameClick = onAddCustomGameClick,
+                        launchGogOAuth = { gogOAuthLauncher.launch(Intent(context, GOGOAuthActivity::class.java)) },
+                        launchEpicOAuth = { epicOAuthLauncher.launch(Intent(context, EpicOAuthActivity::class.java)) },
+                        launchAmazonOAuth = { amazonOAuthLauncher.launch(Intent(context, AmazonOAuthActivity::class.java)) },
+                    )
                     LibrarySourceNotLoggedInSplash(
                         messageResId = messageResId,
                         signInButtonLabelResId = buttonResId,
@@ -1428,15 +1403,7 @@ private fun LibraryScreenContent(
                     LibraryTabBar(
                         currentTab = state.currentTab,
                         tabs = state.visibleLibraryTabs,
-                        tabCounts = mapOf(
-                            LibraryTab.ALL to state.allCount,
-                            LibraryTab.FAVORITES to state.favoritesCount,
-                            LibraryTab.STEAM to state.steamCount,
-                            LibraryTab.GOG to state.gogCount,
-                            LibraryTab.EPIC to state.epicCount,
-                            LibraryTab.AMAZON to state.amazonCount,
-                            LibraryTab.LOCAL to state.localCount,
-                        ) + LibraryTab.entries.mapNotNull { tab -> tab.store?.let { tab to (state.storeCounts[it] ?: 0) } },
+                        tabCounts = libraryTabCounts(state),
                         onTabSelected = onTabChanged,
                         onOptionsClick = { onOptionsPanelToggle(true) },
                         onSearchClick = { onIsSearching(true) },
@@ -1496,55 +1463,16 @@ private fun LibraryScreenContent(
 
         // Bottom action bar
         if (selectedAppId == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
-            val libraryActions = if (state.isSearching) {
-                listOf(
-                    LibraryActions.select,
-                    GamepadAction(
-                        button = GamepadButton.B,
-                        labelResId = R.string.back,
-                        onClick = {
-                            onIsSearching(false)
-                            onSearchQuery("")
-                        },
-                    ),
-                )
-            } else {
-                listOf(
-                    LibraryActions.select,
-                    GamepadAction(
-                        button = GamepadButton.SELECT,
-                        labelResId = R.string.options,
-                        onClick = { onOptionsPanelToggle(true) },
-                    ),
-                    GamepadAction(
-                        button = GamepadButton.START,
-                        labelResId = R.string.action_system,
-                        onClick = { isSystemMenuOpen = true },
-                    ),
-                    GamepadAction(
-                        button = GamepadButton.B,
-                        labelResId = R.string.menu,
-                        onClick = { isSystemMenuOpen = true },
-                    ),
-                    GamepadAction(
-                        button = GamepadButton.Y,
-                        labelResId = R.string.search,
-                        onClick = { onIsSearching(true) },
-                    ),
-                ) + listOfNotNull(
-                    focusedLibraryItem()?.let { item ->
-                        GamepadAction(
-                            button = GamepadButton.X,
-                            labelResId = if (item.appId in favorites) {
-                                R.string.option_remove_from_favorites
-                            } else {
-                                R.string.option_add_to_favorites
-                            },
-                            onClick = { toggleFocusedFavorite() },
-                        )
-                    },
-                )
-            }
+            val libraryActions = libraryGamepadActions(
+                searching = state.isSearching,
+                favorites = favorites,
+                focusedItem = focusedLibraryItem(),
+                onIsSearching = onIsSearching,
+                onSearchQuery = onSearchQuery,
+                onOptionsPanelToggle = onOptionsPanelToggle,
+                onOpenSystemMenu = { isSystemMenuOpen = true },
+                onToggleFavorite = { toggleFocusedFavorite() },
+            )
 
             GamepadActionBar(
                 actions = libraryActions,
@@ -1752,6 +1680,101 @@ private fun LibraryScreenContent(
         }
     }
 }
+
+private fun sourceSplashAction(
+    tab: LibraryTab,
+    context: Context,
+    onGoOnline: () -> Unit,
+    onAddCustomGameClick: () -> Unit,
+    launchGogOAuth: () -> Unit,
+    launchEpicOAuth: () -> Unit,
+    launchAmazonOAuth: () -> Unit,
+): Triple<Int, Int?, () -> Unit> = when (tab) {
+    LibraryTab.STEAM -> Triple(R.string.library_source_not_logged_in_steam, R.string.steam_sign_in, onGoOnline)
+    LibraryTab.GOG -> Triple(R.string.library_source_not_logged_in_gog, R.string.gog_settings_login_title, launchGogOAuth)
+    LibraryTab.EPIC -> Triple(R.string.library_source_not_logged_in_epic, R.string.epic_settings_login_title, launchEpicOAuth)
+    LibraryTab.AMAZON -> Triple(R.string.library_source_not_logged_in_amazon, R.string.amazon_settings_login_title, launchAmazonOAuth)
+    LibraryTab.LOCAL -> Triple(R.string.library_source_no_custom_games, R.string.add_custom_game_dialog_title, onAddCustomGameClick)
+    else -> {
+        val store = checkNotNull(tab.store) { "showEmptyStateSplash is true only for sign-in tabs" }
+        if (StoreGames.availability(context, store) == StoreGames.Availability.UNAVAILABLE) {
+            Triple(R.string.store_unavailable, null, {})
+        } else {
+            Triple(R.string.store_library_signed_out, R.string.store_sign_in, { StoreGames.startSignIn(context, store) })
+        }
+    }
+}
+
+private fun libraryTabCounts(state: LibraryState): Map<LibraryTab, Int> =
+    mapOf(
+        LibraryTab.ALL to state.allCount,
+        LibraryTab.FAVORITES to state.favoritesCount,
+        LibraryTab.STEAM to state.steamCount,
+        LibraryTab.GOG to state.gogCount,
+        LibraryTab.EPIC to state.epicCount,
+        LibraryTab.AMAZON to state.amazonCount,
+        LibraryTab.LOCAL to state.localCount,
+    ) + LibraryTab.entries.mapNotNull { tab -> tab.store?.let { tab to (state.storeCounts[it] ?: 0) } }
+
+private fun libraryGamepadActions(
+    searching: Boolean,
+    favorites: Set<String>,
+    focusedItem: LibraryItem?,
+    onIsSearching: (Boolean) -> Unit,
+    onSearchQuery: (String) -> Unit,
+    onOptionsPanelToggle: (Boolean) -> Unit,
+    onOpenSystemMenu: () -> Unit,
+    onToggleFavorite: () -> Unit,
+): List<GamepadAction> = if (searching) {
+    listOf(
+        LibraryActions.select,
+        GamepadAction(
+            button = GamepadButton.B,
+            labelResId = R.string.back,
+            onClick = {
+                onIsSearching(false)
+                onSearchQuery("")
+            },
+        ),
+    )
+} else {
+    listOf(
+        LibraryActions.select,
+        GamepadAction(
+            button = GamepadButton.SELECT,
+            labelResId = R.string.options,
+            onClick = { onOptionsPanelToggle(true) },
+        ),
+        GamepadAction(
+            button = GamepadButton.START,
+            labelResId = R.string.action_system,
+            onClick = onOpenSystemMenu,
+        ),
+        GamepadAction(
+            button = GamepadButton.B,
+            labelResId = R.string.menu,
+            onClick = onOpenSystemMenu,
+        ),
+        GamepadAction(
+            button = GamepadButton.Y,
+            labelResId = R.string.search,
+            onClick = { onIsSearching(true) },
+        ),
+    ) + listOfNotNull(
+        focusedItem?.let { item ->
+            GamepadAction(
+                button = GamepadButton.X,
+                labelResId = if (item.appId in favorites) {
+                    R.string.option_remove_from_favorites
+                } else {
+                    R.string.option_add_to_favorites
+                },
+                onClick = onToggleFavorite,
+            )
+        },
+    )
+}
+
 
 /** A checkbox and its label as one D-pad stop: the whole row toggles and rings. */
 @Composable

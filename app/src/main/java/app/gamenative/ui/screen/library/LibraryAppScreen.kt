@@ -1725,202 +1725,15 @@ internal fun AppScreenContent(
             }
 
             // Content section below hero with solid background
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(20.dp),
-            ) {
-                // Update available banner
-                if (isUpdatePending) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = PluviaTheme.shape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.update_available),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
-                            Button(
-                                onClick = onUpdateClick,
-                                shape = PluviaTheme.shape(8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                ),
-                            ) {
-                                Text(stringResource(R.string.update_now))
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                CommunityCompatibilitySection(
-                    gameKey = displayInfo.appId.toString(),
-                    summary = communityCompatibility.summary,
-                    loading = communityCompatibility.loading,
-                    loadError = communityCompatibility.loadError,
-                    onRetry = communityCompatibility.onRetry,
-                    onViewReports = communityCompatibility.onViewReports,
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (displayInfo.storeDetails.hasOverview) {
-                    StoreDetailsSection(
-                        details = displayInfo.storeDetails,
-                        gameKey = displayInfo.appId,
-                    )
-                    Spacer(modifier = Modifier.height(22.dp))
-                }
-                // Game information section
-                Text(
-                    text = stringResource(R.string.game_information),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-
-                // Info cards in 2-column grid
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    val statusText = when {
-                        isInstalled -> stringResource(R.string.installed)
-                        isDownloading -> stringResource(R.string.installing)
-                        else -> stringResource(R.string.not_installed)
-                    }
-                    val statusColor = when {
-                        isInstalled -> PluviaTheme.colors.statusInstalled
-                        isDownloading -> MaterialTheme.colorScheme.tertiary
-                        else -> null
-                    }
-                    InfoCard(
-                        label = stringResource(R.string.status),
-                        value = statusText,
-                        statusColor = statusColor,
-                        isCompact = true,
-                        modifier = Modifier.weight(1f),
-                        focusableForNavigation = true,
-                    )
-                    InfoCard(
-                        label = stringResource(R.string.size),
-                        value = when {
-                            isInstalled && displayInfo.sizeOnDisk != null -> displayInfo.sizeOnDisk
-                            !isInstalled && displayInfo.sizeFromStore != null -> displayInfo.sizeFromStore
-                            else -> stringResource(R.string.library_compatibility_unknown)
-                        },
-                        isCompact = true,
-                        modifier = Modifier.weight(1f),
-                        focusableForNavigation = true,
-                    )
-                }
-
-                displayInfo.hltbStats?.let { hltb ->
-                    Spacer(modifier = Modifier.height(10.dp))
-                    HltbInfoBar(hltb)
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    InfoCard(
-                        label = stringResource(R.string.developer),
-                        value = displayInfo.developer.ifBlank { stringResource(R.string.library_compatibility_unknown) },
-                        isCompact = true,
-                        modifier = Modifier.weight(1f),
-                        focusableForNavigation = true,
-                    )
-                    InfoCard(
-                        label = stringResource(R.string.release_date),
-                        value = remember(displayInfo.releaseDate) {
-                            if (displayInfo.releaseDate > 0) {
-                                SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-                                    .format(Date(displayInfo.releaseDate * 1000))
-                            } else {
-                                context.getString(R.string.library_compatibility_unknown)
-                            }
-                        },
-                        isCompact = true,
-                        modifier = Modifier.weight(1f),
-                        focusableForNavigation = true,
-                    )
-                }
-
-                // Install location (when installed)
-                if (isInstalled && displayInfo.installLocation != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InfoCard(
-                        label = stringResource(R.string.location),
-                        value = displayInfo.installLocation,
-                        isCompact = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        focusableForNavigation = true,
-                    )
-                }
-
-                // wine gets NO row; the absence is the indicator, as with the library card badge.
-                if (displayInfo.runtime == Container.RUNTIME_WEBVIEW) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InfoCard(
-                        label = stringResource(R.string.library_runtime_label),
-                        value = stringResource(R.string.library_runtime_value_webview),
-                        isCompact = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        focusableForNavigation = true,
-                    )
-                }
-
-                // Play time and last played
-                if (displayInfo.playtimeText != null || displayInfo.lastPlayedText != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        if (displayInfo.playtimeText != null) {
-                            InfoCard(
-                                label = stringResource(R.string.play_time),
-                                value = displayInfo.playtimeText,
-                                isCompact = true,
-                                modifier = Modifier.weight(1f),
-                                focusableForNavigation = true,
-                            )
-                        }
-                        if (displayInfo.lastPlayedText != null) {
-                            InfoCard(
-                                label = stringResource(R.string.last_played),
-                                value = displayInfo.lastPlayedText,
-                                isCompact = true,
-                                modifier = Modifier.weight(1f),
-                                focusableForNavigation = true,
-                            )
-                        }
-                    }
-                }
-
-                // Achievements
-                if (!achievements.isNullOrEmpty()) {
-                    AchievementsRow(achievements = achievements)
-                }
-
-            }
+            AppDetailsColumn(
+                displayInfo = displayInfo,
+                achievements = achievements,
+                isInstalled = isInstalled,
+                isDownloading = isDownloading,
+                isUpdatePending = isUpdatePending,
+                communityCompatibility = communityCompatibility,
+                onUpdateClick = onUpdateClick,
+            )
         }
 
         GamepadActionBar(
@@ -1983,6 +1796,215 @@ internal fun AppScreenContent(
                 userInteractionCounter = ambientInteractionCounter,
             )
         }
+    }
+}
+
+@Composable
+private fun AppDetailsColumn(
+    displayInfo: GameDisplayInfo,
+    achievements: List<Achievement>?,
+    isInstalled: Boolean,
+    isDownloading: Boolean,
+    isUpdatePending: Boolean,
+    communityCompatibility: CommunityCompatibilityUiState,
+    onUpdateClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(20.dp),
+    ) {
+        // Update available banner
+        if (isUpdatePending) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = PluviaTheme.shape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.update_available),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    Button(
+                        onClick = onUpdateClick,
+                        shape = PluviaTheme.shape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.update_now))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        CommunityCompatibilitySection(
+            gameKey = displayInfo.appId.toString(),
+            summary = communityCompatibility.summary,
+            loading = communityCompatibility.loading,
+            loadError = communityCompatibility.loadError,
+            onRetry = communityCompatibility.onRetry,
+            onViewReports = communityCompatibility.onViewReports,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (displayInfo.storeDetails.hasOverview) {
+            StoreDetailsSection(
+                details = displayInfo.storeDetails,
+                gameKey = displayInfo.appId,
+            )
+            Spacer(modifier = Modifier.height(22.dp))
+        }
+        // Game information section
+        Text(
+            text = stringResource(R.string.game_information),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+
+        // Info cards in 2-column grid
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val statusText = when {
+                isInstalled -> stringResource(R.string.installed)
+                isDownloading -> stringResource(R.string.installing)
+                else -> stringResource(R.string.not_installed)
+            }
+            val statusColor = when {
+                isInstalled -> PluviaTheme.colors.statusInstalled
+                isDownloading -> MaterialTheme.colorScheme.tertiary
+                else -> null
+            }
+            InfoCard(
+                label = stringResource(R.string.status),
+                value = statusText,
+                statusColor = statusColor,
+                isCompact = true,
+                modifier = Modifier.weight(1f),
+                focusableForNavigation = true,
+            )
+            InfoCard(
+                label = stringResource(R.string.size),
+                value = when {
+                    isInstalled && displayInfo.sizeOnDisk != null -> displayInfo.sizeOnDisk
+                    !isInstalled && displayInfo.sizeFromStore != null -> displayInfo.sizeFromStore
+                    else -> stringResource(R.string.library_compatibility_unknown)
+                },
+                isCompact = true,
+                modifier = Modifier.weight(1f),
+                focusableForNavigation = true,
+            )
+        }
+
+        displayInfo.hltbStats?.let { hltb ->
+            Spacer(modifier = Modifier.height(10.dp))
+            HltbInfoBar(hltb)
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            InfoCard(
+                label = stringResource(R.string.developer),
+                value = displayInfo.developer.ifBlank { stringResource(R.string.library_compatibility_unknown) },
+                isCompact = true,
+                modifier = Modifier.weight(1f),
+                focusableForNavigation = true,
+            )
+            InfoCard(
+                label = stringResource(R.string.release_date),
+                value = remember(displayInfo.releaseDate) {
+                    if (displayInfo.releaseDate > 0) {
+                        SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                            .format(Date(displayInfo.releaseDate * 1000))
+                    } else {
+                        context.getString(R.string.library_compatibility_unknown)
+                    }
+                },
+                isCompact = true,
+                modifier = Modifier.weight(1f),
+                focusableForNavigation = true,
+            )
+        }
+
+        // Install location (when installed)
+        if (isInstalled && displayInfo.installLocation != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            InfoCard(
+                label = stringResource(R.string.location),
+                value = displayInfo.installLocation,
+                isCompact = true,
+                modifier = Modifier.fillMaxWidth(),
+                focusableForNavigation = true,
+            )
+        }
+
+        // wine gets NO row; the absence is the indicator, as with the library card badge.
+        if (displayInfo.runtime == Container.RUNTIME_WEBVIEW) {
+            Spacer(modifier = Modifier.height(10.dp))
+            InfoCard(
+                label = stringResource(R.string.library_runtime_label),
+                value = stringResource(R.string.library_runtime_value_webview),
+                isCompact = true,
+                modifier = Modifier.fillMaxWidth(),
+                focusableForNavigation = true,
+            )
+        }
+
+        // Play time and last played
+        if (displayInfo.playtimeText != null || displayInfo.lastPlayedText != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (displayInfo.playtimeText != null) {
+                    InfoCard(
+                        label = stringResource(R.string.play_time),
+                        value = displayInfo.playtimeText,
+                        isCompact = true,
+                        modifier = Modifier.weight(1f),
+                        focusableForNavigation = true,
+                    )
+                }
+                if (displayInfo.lastPlayedText != null) {
+                    InfoCard(
+                        label = stringResource(R.string.last_played),
+                        value = displayInfo.lastPlayedText,
+                        isCompact = true,
+                        modifier = Modifier.weight(1f),
+                        focusableForNavigation = true,
+                    )
+                }
+            }
+        }
+
+        // Achievements
+        if (!achievements.isNullOrEmpty()) {
+            AchievementsRow(achievements = achievements)
+        }
+
     }
 }
 
